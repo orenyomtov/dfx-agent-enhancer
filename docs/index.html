@@ -86,7 +86,7 @@ nav .wrap { height: 56px; display: flex; align-items: center; gap: 12px; }
 
 /* hero */
 .hero::after { content: ""; position: absolute; inset: auto 0 0 0; height: 140px; z-index: 1; background: linear-gradient(transparent, var(--bg) 90%); pointer-events: none; }
-.hero { position: relative; min-height: 100svh; display: flex; align-items: center; padding: 96px 0 64px; overflow: hidden; isolation: isolate; }
+.hero { position: relative; min-height: min(100svh, 940px); display: flex; align-items: center; padding: 104px 0 72px; overflow: hidden; isolation: isolate; }
 #spectrum {
   position: absolute; left: -6%; top: -6%; width: 112%; height: 112%; z-index: -2;
   filter: blur(36px) saturate(140%); opacity: .55;
@@ -109,30 +109,30 @@ h1 em { font-style: italic; color: #cfcfcf; }
 /* install block, in the spirit of vgpu's tabbed install */
 .install { max-width: 640px; }
 .tabs { display: flex; align-items: center; gap: 2px; font-size: 14px; margin-bottom: 12px; }
-.tab { background: none; border: 0; padding: 4px 2px; font: inherit; color: var(--dim); cursor: pointer; transition: color .2s; }
-.tab:hover { color: var(--muted); }
-.tab[aria-selected="true"] { color: var(--fg); }
+.tab { background: none; border: 0; padding: 4px 2px; font: inherit; color: var(--muted); cursor: pointer; transition: color .2s; }
+.tab:hover { color: var(--fg); }
+.tab[aria-selected="true"] { color: #fff; font-weight: 500; }
 .tabs .dot { color: var(--dim); padding: 0 6px; }
 .rule { height: 1px; background: linear-gradient(90deg, rgba(255,255,255,.55), rgba(255,255,255,.12) 60%, transparent); margin-bottom: 14px; }
 .panes { position: relative; }
 .pane[hidden] { display: none; }
 .cmd {
   display: flex; align-items: flex-start; gap: 12px;
-  font: 400 13.5px/1.6 var(--mono); color: var(--fg);
-  background: rgba(10,10,10,.75); border: 1px solid var(--line2); border-radius: 10px;
-  padding: 12px 10px 12px 16px;
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  font: 400 15px/1.6 var(--mono); color: #fff;
+  background: #0b0b0b; border: 1px solid rgba(255,255,255,.24); border-radius: 12px;
+  padding: 14px 12px 14px 18px;
+  box-shadow: 0 0 0 4px rgba(255,255,255,.03), 0 20px 50px -20px rgba(0,0,0,.9);
 }
 .cmd code { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; padding-top: 3px; font: inherit; }
 .cmd .nw { white-space: nowrap; }
-.cmd .ps { color: var(--dim); user-select: none; -webkit-user-select: none; }
+.cmd .ps { color: var(--lime); user-select: none; -webkit-user-select: none; }
 .copy {
-  flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 7px;
-  border: 1px solid var(--line2); background: #111; color: var(--muted); cursor: pointer;
+  flex: none; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.28); background: #1a1a1a; color: var(--fg); cursor: pointer;
   transition: color .2s, background .2s, border-color .2s;
 }
-.copy:hover { color: var(--fg); background: #1a1a1a; }
-.copy svg { width: 15px; height: 15px; grid-area: 1/1; transition: opacity .2s, transform .2s; }
+.copy:hover { color: #fff; background: #262626; }
+.copy svg { width: 16px; height: 16px; grid-area: 1/1; transition: opacity .2s, transform .2s; }
 .copy .ok { opacity: 0; transform: scale(.6); color: var(--lime); }
 .copy.done { border-color: rgba(180,227,61,.5); }
 .copy.done .ic { opacity: 0; transform: scale(.6); }
@@ -150,9 +150,12 @@ h1 em { font-style: italic; color: #cfcfcf; }
 @keyframes float { 50% { transform: translateY(-8px); } }
 
 @media (max-width: 900px) {
-  .hero { min-height: 0; padding: 104px 0 120px; text-align: center; }
+  .hero { min-height: 0; padding: 96px 0 96px; text-align: center; }
   .hero + section { padding-top: 24px; }
-  .hero-grid { grid-template-columns: 1fr; gap: 48px; justify-items: center; }
+  .hero-grid { grid-template-columns: 1fr; gap: 0; justify-items: center; }
+  .hero-copy { display: contents; }
+  .hero-copy .ctas { order: 2; margin-top: 36px; }
+  .rack { order: 1; margin-top: 44px; }
   .lede { margin-left: auto; margin-right: auto; }
   .install { margin: 0 auto; text-align: left; width: 100%; }
   .tabs { justify-content: center; }
@@ -164,7 +167,7 @@ h1 em { font-style: italic; color: #cfcfcf; }
   .grid-lines { -webkit-mask-image: radial-gradient(ellipse 80% 45% at 50% 78%, #000 10%, transparent 70%); mask-image: radial-gradient(ellipse 80% 45% at 50% 78%, #000 10%, transparent 70%); }
 }
 @media (max-width: 420px) {
-  .cmd { font-size: 12.5px; padding-left: 12px; }
+  .cmd { font-size: 13px; padding-left: 14px; }
   .ctas .btn { flex: 1 1 100%; }
   .lede { font-size: 19px; }
 }
@@ -235,13 +238,15 @@ footer a { color: var(--muted); }
 footer a:hover { color: var(--fg); }
 
 /* entrance */
-.rise { opacity: 0; transform: translateY(14px); animation: rise .9s cubic-bezier(.2,.7,.2,1) forwards; }
-.d1 { animation-delay: .08s; } .d2 { animation-delay: .16s; } .d3 { animation-delay: .24s; } .d4 { animation-delay: .32s; } .d5 { animation-delay: .4s; }
-@keyframes rise { to { opacity: 1; transform: none; } }
-.reveal { opacity: 0; transform: translateY(18px); transition: opacity .9s cubic-bezier(.2,.7,.2,1), transform .9s cubic-bezier(.2,.7,.2,1); }
-.reveal.in { opacity: 1; transform: none; }
+/* entrance: content is always visible; motion is only an enhancement */
+@media (prefers-reduced-motion: no-preference) {
+  .rise { animation: rise .9s cubic-bezier(.2,.7,.2,1) both; }
+  .d1 { animation-delay: .08s; } .d2 { animation-delay: .16s; } .d3 { animation-delay: .24s; } .d4 { animation-delay: .32s; }
+  .reveal { transition: transform .8s cubic-bezier(.2,.7,.2,1); }
+  .reveal.pre:not(.in) { transform: translateY(20px); }
+}
+@keyframes rise { from { transform: translateY(14px); } }
 @media (prefers-reduced-motion: reduce) {
-  .rise, .reveal { animation: none; opacity: 1; transform: none; transition: none; }
   .rack img, .tree .pulse { animation: none; }
 }
 </style>
@@ -269,7 +274,7 @@ footer a:hover { color: var(--fg); }
   <canvas id="spectrum" aria-hidden="true"></canvas>
   <div class="grid-lines" aria-hidden="true"></div>
   <div class="wrap hero-grid">
-    <div>
+    <div class="hero-copy">
       <h1 class="rise">DFX Agent <em>Enhancer</em></h1>
       <p class="lede rise d1">Watch your Claude Code and Cursor agents work from the menu bar. <span>In the classic blue DFX Audio Enhancer skin.</span></p>
       <div class="install rise d2" data-install>
@@ -445,11 +450,15 @@ fetch('https://api.github.com/repos/orenyomtov/dfx-agent-enhancer')
 const nav = document.getElementById('nav');
 addEventListener('scroll', () => nav.classList.toggle('scrolled', scrollY > 8), { passive: true });
 
-// reveal on scroll
-const io = 'IntersectionObserver' in window && new IntersectionObserver(es => es.forEach(e => {
-  if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
-}), { rootMargin: '0px 0px -8% 0px' });
-document.querySelectorAll('.reveal').forEach(el => io ? io.observe(el) : el.classList.add('in'));
+// reveal on scroll: only hides elements that start below the fold, and only when motion is welcome
+if ('IntersectionObserver' in window && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+  }), { rootMargin: '0px 0px -8% 0px' });
+  document.querySelectorAll('.reveal').forEach(el => {
+    if (el.getBoundingClientRect().top > innerHeight) { el.classList.add('pre'); io.observe(el); }
+  });
+}
 
 // hero background: the rack's spectrum, drawn small and blurred by CSS
 (() => {

@@ -28,8 +28,10 @@ cleanup() {
 }
 
 quit_app() {
-    # every running copy, wherever it was started from
+    # by default every running copy, wherever it was started from; with DFX_INSTALL_DIR set,
+    # only the copy in that folder (so a test install leaves the real one alone)
     local pat="$NAME.app/Contents/MacOS/$NAME"
+    if [ -n "${DFX_INSTALL_DIR:-}" ]; then pat="$APP/Contents/MacOS/$NAME"; fi
     pgrep -f "$pat" >/dev/null || return 0
     say "Quitting the running $NAME..."
     pkill -f "$pat" || true
@@ -51,7 +53,11 @@ uninstall() {
     else
         say "$APP was not installed"
     fi
-    say "Launch at login is off. Your settings are in ~/Library/Application Support/$NAME (delete that folder to remove them)."
+    if [ -n "${DFX_CONFIG:-}" ]; then
+        say "Launch at login is off. Your settings are in $DFX_CONFIG (delete that file to remove them)."
+    else
+        say "Launch at login is off. Your settings are in ~/Library/Application Support/$NAME (delete that folder to remove them)."
+    fi
 }
 
 install() {
