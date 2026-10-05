@@ -180,6 +180,9 @@ def test_model_prices_by_id_and_family_fallback(roots):
     assert price("us.anthropic.claude-sonnet-4-5-v1:0") == ((3, 15, 0.30), True)
     assert price("claude-opus-4-20250514") == ((15, 75, 1.50), True)
     assert price("claude-sonnet-5") == ((2, 10, 0.20), True) and price("claude-fable-5") == ((10, 50, 1), True)
+    # the older version-first form and the -0 aliases
+    assert price("claude-3-5-haiku-20241022") == ((0.80, 4, 0.08), True)
+    assert price("claude-opus-4-0") == ((15, 75, 1.50), True) and price("claude-sonnet-4-0") == ((3, 15, 0.30), True)
     # a version not in the table: the newest price of its family, marked as an estimate
     assert price("claude-opus-6") == (sources.PRICES["opus-5-5"], False)
     assert price("claude-sonnet-9-1") == (sources.PRICES["sonnet-5-5"], False)

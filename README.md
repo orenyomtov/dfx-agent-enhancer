@@ -22,7 +22,7 @@ The app is not notarized, so macOS blocks it the first time you open it from the
 
 - The graph shows what your Claude Code sessions and subagents spend, in dollars per hour, or the number of active sessions (the SPEND / SESSIONS keys). Spend is approximate: the usage the transcripts record (input, output, cache writes and reads), priced at Anthropic's API list prices. Cursor records no usage, so it has no spend.
 - The rows show sessions, subagents, spend, tool calls and errors, each with a status LED.
-- NOW, 1H, TODAY and WEEK pick the time window. TODAY is the default and runs from midnight to now. Hover anything for exact numbers.
+- 5 MIN, 1H, TODAY and WEEK pick the time window. TODAY is the default and runs from midnight to now. Hover anything for exact numbers.
 - The menu-bar icon is a tiny live copy of the graph, with the number of agents working right now.
 - CHIME plays a sound when an agent finishes. DOCK shrinks the rack to a small deck.
 

@@ -165,8 +165,11 @@ class Panel:
                     self._dragging = False
                     self._grab = None
                     if win is not None and event.window() == win:
-                        m, o = NSEvent.mouseLocation(), win.frame().origin
-                        self._grab = (m.x - o.x, m.y - o.y)
+                        # where the click happened, in window points (y up), not where the mouse
+                        # is by the time this runs: a press-and-move while the main thread was busy
+                        # would otherwise leave the window offset from the cursor for the whole drag
+                        p = event.locationInWindow()
+                        self._grab = (p.x, p.y)
                 elif self._dragging:
                     self._follow()
                     if kind == NSEventTypeLeftMouseUp:
@@ -212,7 +215,8 @@ class Panel:
     # ------------------------------------------------------------ public, called from worker threads
     def start(self) -> None:
         """Position the window from the saved anchor, then show it."""
-        self._on_main(lambda: (self._place(self.mode), self._hover_always(), self._watch_drag()))
+        self._on_main(lambda: (_keep_on_any_screen(self._nswindow()), self._place(self.mode),
+                               self._hover_always(), self._watch_drag()))
         self.set_on_top(self.ctrl.toggles()["onTop"])
         self.show()
 
@@ -419,6 +423,38 @@ def _accept_first_mouse(cls) -> None:
         return True
     objc.classAddMethods(cls, [objc.selector(acceptsFirstMouse_, selector=b"acceptsFirstMouse:", signature=b"Z@:@")])
     cls._dfx_first_mouse = True
+
+
+def top_on_a_screen(frame, visible) -> bool:
+    """True when the window's top edge lies on some screen's usable area (below its menu bar):
+    frame is (x, y, w, h), visible a list of the same, Cocoa coordinates (y up)."""
+    x, y, w, h = frame
+    top = y + h
+    return any(vy <= top <= vy + vh and x < vx + vw and vx < x + w for vx, vy, vw, vh in visible)
+
+
+def _keep_on_any_screen(win) -> None:
+    """setFrameOrigin: on a titled window goes through constrainFrameRect:toScreen:, which keeps
+    the top edge under the menu bar of one screen (checked: asked for a top 23 pt above the
+    laptop's usable area, got its top edge). A drag from the laptop up onto a display above it
+    would stop there. Leave a frame alone when its top edge is on any screen's usable area, and
+    let AppKit handle the rest (under a menu bar, off every screen)."""
+    import objc
+    from AppKit import NSScreen, NSWindow
+    cls = type(win)
+    if win is None or getattr(cls, "_dfx_any_screen", False):
+        return
+
+    def constrainFrameRect_toScreen_(self, rect, screen):
+        def t(r):
+            return (r.origin.x, r.origin.y, r.size.width, r.size.height)
+        if top_on_a_screen(t(rect), [t(s.visibleFrame()) for s in NSScreen.screens()]):
+            return rect
+        return objc.super(cls, self).constrainFrameRect_toScreen_(rect, screen)
+    objc.classAddMethods(cls, [objc.selector(
+        constrainFrameRect_toScreen_, selector=b"constrainFrameRect:toScreen:",
+        signature=NSWindow.constrainFrameRect_toScreen_.signature)])
+    cls._dfx_any_screen = True
 
 
 # menu-bar icon: the rack's 10 bars, 1.5 pt wide on a 2.5 pt pitch (3 px bars, 2 px gaps on Retina)

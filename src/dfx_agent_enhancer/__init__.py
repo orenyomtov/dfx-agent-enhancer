@@ -1,7 +1,7 @@
 """DFX Agent Enhancer: read-only menu-bar view of Claude Code and Cursor agent activity."""
 import os
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 
 def env(name: str) -> str | None:

@@ -29,7 +29,7 @@
   // ------------------------------------------------------------ 7-segment digits
   // The original column is 23px wide and holds one 9px digit. To show values like 84k or 0.2G
   // without widening it, the LCD here has three narrow cells (5.4 x 13) at the same height.
-  var W = 5.4, H = 13, T = 1.45, G = 0.3, CELLS = 3;
+  var W = 5.4, H = 13, T = 1.45, G = 0.3, CELLS = 3, DPX = 1.55;   // DPX: the dot's centre past the cell
   function hseg(y) {
     var x1 = T / 2 + G, x2 = W - T / 2 - G, h = T / 2;
     return [[x1, y], [x1 + h, y - h], [x2 - h, y - h], [x2, y], [x2 - h, y + h], [x1 + h, y + h]];
@@ -61,8 +61,9 @@
     else (DIG[ch] || "").split("").forEach(function (s) { body += '<polygon class="on" points="' + pts(SEG[s]) + '"/>'; });
     // $: the S of the 7 segments with a stroke through it, reaching past the cell like a printed $
     if (ch === "$") body += '<rect class="on" x="' + (W / 2 - 0.45).toFixed(2) + '" y="-1.1" width=".9" height="' + (H + 2.2) + '"/>';
-    body += '<circle class="' + (dp ? "dp" : "ghost") + '" cx="' + (W + 0.6) + '" cy="' + (H - 0.7) + '" r=".6"/>';
-    return '<svg viewBox="0 0 ' + W + " " + H + '">' + body + "</svg>";
+    // a decimal point is a 1.9 px dot in a gap of its own (.drow svg.dp), so 6.6 never reads as 66
+    if (dp) body += '<circle class="on" cx="' + (W + DPX) + '" cy="' + (H - 0.95) + '" r=".95"/>';
+    return '<svg' + (dp ? ' class="dp"' : "") + ' viewBox="0 0 ' + W + " " + H + '">' + body + "</svg>";
   }
   // Each row draws only the cells its text needs (1 to 3; -- is 2) and the row is centred on the
   // column, so a single digit sits where the original's one digit sat.
@@ -85,10 +86,12 @@
     if (n < 1e8) return Math.floor(n / 1e6) + "M";
     return Math.min(9.9, Math.floor(n / 1e8) / 10).toFixed(1) + "G";     // a heavy week: 0.2G
   }
-  // dollars, also in three cells: $0, $0.4, $4.2, $42, then without the sign 420, 4.2k, 42k, 0.4M
+  // dollars, also in three cells: $0, cents under a dollar ($.03, $.40: a little spend never shows
+  // as $0), $4.2, $42, then without the sign 420, 4.2k, 42k, 0.4M
   function fmtUsd(n) {
     if (n === null || n === undefined) return "--";
     if (n === 0) return "$0";
+    if (n < 0.995) return "$." + ("0" + Math.max(1, Math.round(n * 100))).slice(-2);
     if (n < 9.95) return "$" + n.toFixed(1);
     if (n < 99.5) return "$" + Math.round(n);
     if (n < 999.5) return String(Math.round(n));
@@ -292,7 +295,7 @@
   // The deck is the rack minimized: the same graph, and its current value as the big text. A tag
   // in the corner names the graph's window, as the rack's key does, so a value per minute over an
   // hourly graph is not read as the bars' own value.
-  var WIN = { now: "NOW", "1h": "1H", today: "TODAY", week: "WEEK" };
+  var WIN = { now: "5 MIN", "1h": "1H", today: "TODAY", week: "WEEK" };
   function renderMini(s) {
     var d = s.deckText || { big: "…", small: "" };
     $("mbig").textContent = d.big;

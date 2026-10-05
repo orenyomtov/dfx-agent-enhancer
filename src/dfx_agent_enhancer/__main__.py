@@ -30,7 +30,7 @@ PS_SECS = 6          # `ps` costs ~0.1 s with a few hundred processes; the pid s
 CHIME_GAP = 5        # seconds: several sessions stopping together give one chime
 INFO_TAG = 4242      # the menu's status lines, rebuilt each time it opens
 DEBUG = bool(env("DEBUG"))
-WINDOW_NAMES = (("now", "Now"), ("1h", "Last hour"), ("today", "Today"), ("week", "Week"))
+WINDOW_NAMES = (("now", "Last 5 min"), ("1h", "Last hour"), ("today", "Today"), ("week", "Week"))
 METRIC_NAMES = (("spend", "Spend"), ("sessions", "Sessions"))
 CONFIG_VERSION = 2   # 2: TODAY is the default window (a saved NOW moved to it once), the tokens graph is spend
 

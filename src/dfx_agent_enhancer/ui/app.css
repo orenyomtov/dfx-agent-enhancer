@@ -203,9 +203,9 @@ button { font: inherit; border: 0; background: none; color: inherit; cursor: def
 }
 .drow { position: absolute; left: 0; right: 0; height: 13px; display: flex; justify-content: center; gap: 1.2px; }
 .drow svg { display: block; width: 5.4px; height: 13px; overflow: visible; }
+.drow svg.dp { margin-right: 1.9px; }   /* room for the decimal point: a 3.1 px gap instead of 1.2 */
 .drow .ghost { fill: #000; opacity: .085; }
 .drow .on { fill: #000; }
-.drow .dp { fill: #000; }
 
 /* ---------------- right-hand keys ---------------- */
 .keys { position: absolute; left: 176px; width: 76px; border: 1px solid #131313; border-radius: 4px; overflow: hidden; background: #131313;
@@ -323,7 +323,7 @@ button { font: inherit; border: 0; background: none; color: inherit; cursor: def
 .mtext b { font-weight: 900; }
 .mtext small { margin-left: 2px; font: 700 9px/9px "Trebuchet MS", Arial, sans-serif; letter-spacing: .3px; text-transform: uppercase; }
 .mtext.idle { color: #9a9a9a; }
-.mwin { /* the graph's window (NOW, 1H, TODAY, WEEK), in the rack's axis style */
+.mwin { /* the graph's window (5 MIN, 1H, TODAY, WEEK), in the rack's axis style */
   position: absolute; left: 2.5px; top: 1px; font: italic 700 7px/8px Arial, Helvetica, sans-serif; letter-spacing: -.1px;
   color: #8aa416; text-shadow: 0 0 1px #000, 0 0 2px #000, 0 0 2px #000; }
 

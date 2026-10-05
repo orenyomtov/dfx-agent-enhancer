@@ -69,3 +69,16 @@ def test_drag_regions_are_ours_and_hold_no_controls():
     assert drags == ["img", "div", "img", "div"]       # rack shell, title, deck shell, deck display
     deck = html[html.index('id="mscreen"'):html.index('<div class="mkeys">')]
     assert "<button" not in deck
+
+
+def test_a_frame_whose_top_is_on_any_screen_is_left_alone():
+    """AppKit keeps a titled window's top under one screen's menu bar; we let it be wherever its
+    top edge is on some screen's usable area, so it can be dragged onto a display above."""
+    laptop = (0, 0, 1512, 949)                 # visible frame, below a 33 pt menu bar
+    above = (-300, 982, 2560, 1415)            # an external display placed above the laptop
+    rack = lambda x, top: (x, top - 436, 272, 436)
+    assert panel.top_on_a_screen(rack(600, 900), [laptop])
+    assert not panel.top_on_a_screen(rack(600, 970), [laptop])               # under the menu bar
+    assert panel.top_on_a_screen(rack(600, 1100), [laptop, above])           # on the upper display
+    assert not panel.top_on_a_screen(rack(600, 970), [laptop, above])        # still the menu bar strip
+    assert not panel.top_on_a_screen(rack(2400, 1100), [laptop, above])      # past the upper display's right edge

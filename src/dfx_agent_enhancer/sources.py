@@ -43,10 +43,17 @@ _priced: dict = {}
 
 def price(model: str):
     """(rates, exact) for a model id, or None when it names no Claude family. Handles dated, [1m],
-    Bedrock and Vertex forms: claude-haiku-4-5-20251001, claude-opus-4-6[1m], claude-opus-4-5@20251101."""
+    Bedrock and Vertex forms: claude-haiku-4-5-20251001, claude-opus-4-6[1m], claude-opus-4-5@20251101,
+    the older version-first form claude-3-5-haiku-20241022, and aliases like claude-opus-4-0 (= opus-4)."""
     if model not in _priced:
-        m = re.search(r"(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d)(?!\d))?", model or "")
-        key = m and "-".join(g for g in m.groups() if g)
+        fam = "(fable|mythos|opus|sonnet|haiku)"
+        m = re.search(fam + r"-(\d{1,2})(?!\d)(?:-(\d)(?!\d))?", model or "")
+        if m:
+            f, major, minor = m.groups()
+        else:
+            m = re.search(r"(?<!\d)(\d{1,2})(?:-(\d))?-" + fam, model or "")
+            major, minor, f = m.groups() if m else (None, None, None)
+        key = f and "-".join([f, major] + ([minor] if minor and minor != "0" else []))
         if key in PRICES:
             _priced[model] = (PRICES[key], True)
         else:
