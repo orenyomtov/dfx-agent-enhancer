@@ -1,0 +1,276 @@
+# Notes for future sessions
+
+Context, decisions and gotchas for DFX Agent Enhancer (package `dfx_agent_enhancer`, called `cursor_scope` until 2026-10-05). README.md is the short public page (install, privacy, uninstall); the full usage and behaviour reference that used to be in it is the last section of this file, "Usage reference".
+
+## Sources of truth
+
+- The original spec, the approved mockup with the user rulings, the v2 information design with its v3 delta, and the DFX reference captures are kept privately, outside this repo. The rulings below and the sections of this file summarize what matters. Reference images of the original DFX skin must not be copied into `src/dfx_agent_enhancer/ui/` (called `ui/` below).
+
+## User rulings (2026-10-04)
+
+1. Where the mockup and spec disagree, the mockup wins. Title "DFX Agent Enhancer"; DFX branding (logo, PRESETS/MENU/SKINS band, POWER-style oval) is wanted. Use NOW, 1H, TODAY, WEEK (the mockup's doubled "1H" was a glitch).
+2. Only one window is ever visible: the big panel, or, when docked, the mini deck. The deck is the panel minimized, not a sibling window.
+3. The look must match the original DFX Audio Enhancer classic blue skin pixel for pixel: silhouette, bevels, gloss, metal, LEDs, tracks, buttons, fonts, the green oval, the minimized deck.
+4. (after v1) A way to close/minimize; every control must feel clickable on hover/press even when inert; no repo pinning; no Cursor vs Claude split anywhere on the face, Claude Code supported very well (it is the user's main tool, and the user is a beta tester); the spectrum should show something useful over time (designer's call: output tokens, with active sessions as the second mode).
+
+## What changed in v2 (2026-10-04)
+
+- Removed: repo pinning (PIN key, repo tab, `git` calls, `pinnedRepo` config, which is dropped from old configs on load), the 5 Cursor + 5 Claude bar split, the Cursor/Claude/LIVE axis words, the CPU and TURNS rows, v1's `MAX_FILES = 200` cap (it dropped most of a heavy day's subagent files).
+- Data: transcripts are reduced to 10 s bins per file as they are read (`sources.FileState`), never kept as events. Claude subagent and workflow agent transcripts are read and fold into their parent session. Streamed records are counted once by message id. Live state comes from Claude's `sessions/<pid>.json`.
+- Face: spectrum = reported output tokens (dB-style) or active sessions (linear), switched by the old SPEAKERS/HEADPHONES radio (now TOKENS/SESSIONS, saved as `metric`). Rows = SESSIONS, SUBAGENTS, TOKENS, TOOL CALLS, ERRORS. Explore tab = top model. Axis = window start, `OUTPUT TOKENS` / `ACTIVE SESSIONS` in the FREQUENCY BANDS slot, `now`.
+- Window: `v` docks, `-` hides to the menu bar; the deck's domes hide, expand and open the menu; menu has Show/Hide and Dock/Expand. Showing never activates the app.
+- Hover and press affordances on every control, working while another app is frontmost (see "Hover while inactive").
+
+## What changed in v3 (2026-10-05, USER RULINGS 5)
+
+- Graph: tokens are a rate, output tokens per minute, so a label means the same thing in every window and matches the deck. Linear heights (`snapshot.height`), 2 px stub for anything above 0. Full scale is the first of 4, 8, 12, 20, 40, 80 × 10^k (`FS_STEPS`) at or above the peak, floor 4k/min (tokens) or 4 (sessions), with v2's stable rise/fall. Labels are four bare numbers (FS, 3/4, 1/2, 1/4) of at most 2 digits; the lime tab carries the name and multiplier (`Tokens/min ×1k`, `×10k` from 120k, `×100k` from 1.2M; `Active sessions`). 3 digits (15.4 px) or `100k` (20 px) do not fit the 15 px label column.
+- Grid: 8 even rows at eighths of the track (y76, 85.5, ... y151) instead of the original log rows, so the labels sit on rows. The deck's grid is at quarters.
+- X axis: time labels from Python (`snapshot.axis`: `[{x, text}]`), placed by `app.js`; the end labels are always shown, interior ones are dropped when they would come within 4 px of another (widths measured with a canvas, so it works while the panel is hidden). TODAY uses whole clock times with the first step of 15 min, 30 min, 1-6 h that gives at most 4; WEEK puts each weekday at its local noon. Day names are a fixed English list, not the locale.
+- One in-page tooltip for the whole rack (`#tip`, driven by `__hoverAt`), because native `title` tooltips never show while the app is inactive. Rack controls carry `data-tip`; each bar owns its 23 px column (`.col`) and shows its tooltip at once (scrubbing), other controls after 500 ms. A bar's box sits at the top of the plot (y66), centred on the bar and kept right of the Y labels (x30-256); when the hovered bar reaches up into the box (top above about y97, i.e. above ~72% of full scale) it moves beside the bar on the side with more room (right for bars 1-5, left for 6-10), and when it is too wide for that (WEEK tips with 8-digit token counts over bars 5-6) it goes above the track (bottom edge y75, over the tabs). It never covers the bar it describes. Bar text comes from Python (`spectrum[m].tips`, per-bucket source bits in `Agg.src`). The deck keeps native titles. Do not give the tooltip a class named `bar`: `.bar` is the spectrum bar rule (10 x 76 px) and squeezed the box once.
+- Silver tab = session state (`readout`: `3 active · 27 open` green, `Idle · 27 open` amber, `No sessions`, `Loading…`), with a round LED. The model shares moved to the TOKENS row tooltip. The tab has 4 px padding, a 3 px LED gap and `word-spacing: -.5px`, so `12 active · 108 open` fits (it was cut with 6 px padding; `12 active · 27 open` was 95.5 px of 96).
+- Digit rows draw only the cells they need and are centred on the column (x159.5).
+- Deck = the rack's graph (`spectrum[metric].heights`) under its current value (`deckText`: `12k`+`/min`, `3`+`ACTIVE`, `IDLE`, `NO DATA`, `…`), with a small olive window tag (`NOW`, `1H`, `TODAY`, `WEEK`, `#mwin`) in the display's top-left corner, so `44k /MIN` over an hourly graph is not read as the bars' value. The rate is reported output tokens in the 60 s up to now (`token_rate`), None when no Claude Code data exists at all. With 10 s bins it counts the current partial bin and the 5 before it in full, plus the part of the bin before those that is still inside the minute (linear share). Until the audit fix it summed `[end - 60, end)` with `end` the end of the current bin, which covered only 50-60 s (about 8% low on average) and jumped every time a bin left. The menu header formats it with `compact()` like the deck (`41k`, not `41.0k`).
+- SESSIONS graph: the last bar also counts every session in the live working set (`a.active[-1] |= working` in `build`), so a Claude session reported busy that wrote nothing in the lookback (a long tool call) is in the bar too. On NOW the last bar then equals the deck's `N ACTIVE`, the silver tab and the menu-bar title; on longer windows it can be larger (sessions with activity in the last bucket that are idle now).
+- Menu bar: the icon is the configured graph (`panel.graph_icon`, a template image drawn on demand, replaced on the 2 s poll only when the snapped bars change); the title is `N active` or empty. The menu's top lines are rebuilt in `menuWillOpen:` (`_MenuWatch`): state and rate, today's totals, the active sessions by name (duplicates collapse to `name ×2`), the last session that stopped. Then Graph, Window, Chime, Keep on Top, Show/Hide, Dock/Expand, Quit.
+- Band: PRESETS became CHIME (bell inline before the label: there is no room under it, the oval's ring is 4 px below), SKINS became ON TOP (pin under the label, where the skins dot was; `TOP` alone was cryptic, and `ON TOP` fits the 40 px panel with about 3 px each side, legible at 1x). The icon is the toggle's lamp: grey off, lime `#bed858` with a glow on. Config keys `chime` (default false) and `onTop` (default true).
+- v3 audit fixes (2026-10-05, after the v3 build): bar tooltip never covers its bar, deck window tag, silver tab spacing, `ON TOP`, menu rate format, `token_rate` covers exactly 60 s, SESSIONS last bar includes the live working set. Details in the bullets above.
+- Removed: "Open newest transcript folder" (`open_log`, `Scanner.newest`, `hasLog`), the dB mapping (`db_height`, `DB`, `LABEL_H`, `lin_height`, `SESSION_FS`, `nice_up`/`nice_down`), the axis caption, the model tab, and `tab`, `deck`, `live`, `open`, `axis.start/end` in the snapshot.
+
+## Window model
+
+- One borderless, transparent, shadowless pywebview window (`on_top`, level NSStatusWindowLevel). The page holds both views (`#panel` 272x436, `#mini` 146x92); `body.mode-panel` / `body.mode-mini` picks one.
+- Dock/open (`panel.Panel._switch`): fade the page out with `evaluate_js`, resize the same NSWindow on the main thread, switch the view, fade back in. A brief blank frame instead of a flash of the wrong view.
+- Placement keeps the lime power oval centre fixed on screen (`OVAL` offsets in `panel.py`), so the oval stays under the mouse when you click DOCK and then click the deck's oval. The oval centre ("anchor", Cocoa screen coordinates, y up) and the docked flag are saved in config; a saved anchor that is off every screen falls back to the top-right of the main screen.
+- The window is created hidden and shown after it is positioned, so it does not jump at startup. Show/hide use `orderFrontRegardless` / `orderOut` on the main thread, not pywebview's `show()` (that one activates the app and steals focus from the editor). The hidden state is not persisted; a relaunch shows the last view (panel or deck).
+- Clicking the window still activates the app (it is a normal NSWindow, not a non-activating panel); a click on the inactive window is delivered to the page (`acceptsFirstMouse:` is added to pywebview's WKWebView subclass in `panel._accept_first_mouse`), so `-` and `v` take one click, not two. Checked with real mouse events: one click on 1H while iTerm2 was frontmost selected 1H.
+- Dragging uses pywebview's drag region (`.pywebview-drag-region` on the shell images, the title and the deck display). pywebview checks the mousedown target and its ancestors, so controls are siblings above the drag elements, never inside them. Control clicks stop propagation; a click elsewhere on the deck (chassis, display) that did not move more than 3px expands it, so dragging it does not.
+
+## Hover while inactive (verified with real mouse events, macOS 26)
+
+- The window belongs to an accessory app that is almost never active, so it is never key. WKWebView follows the mouse only in the key window: its tracking area has `NSTrackingActiveInKeyWindow` (options 0x228 here). With iTerm2 frontmost, real mouse moves (CGEventPost) over the rack gave no `:hover` at all.
+- Swapping that tracking area for an `ActiveAlways` one, or forwarding `mouseMoved:` to the web view from our own always-active area, does not help: WebKit ignores the moves while the window is not key.
+- What works (`panel._HoverForwarder`): our own tracking area (`ActiveAlways | MouseMoved | EnteredAndExited | InVisibleRect`) on the web view; each event calls `window.__hoverAt(x, y)` through `evaluateJavaScript:completionHandler:` (non-blocking, main thread). The page puts a `.hover` class on the control under the mouse and the CSS styles `:hover` and `.hover` the same. When the window is key, WebKit's own `:hover` and cursor take over and the two agree.
+- The forwarder never trusts the event type: on every moved/entered/exited event it reads where the mouse really is (`NSEvent.mouseLocation`, and whether the window is visible) and sends that, or (-1, -1) when it is outside. So a spurious `mouseExited:` while the mouse is still on a control does not clear the highlight. While the mouse is over a control, a 0.1 s timer (`CURSOR_EVERY`) re-reads the position (heals a missed move or exit, and clears the highlight when the window is hidden under the mouse) and re-sets the cursor. The timer stops as soon as the mouse is off the controls.
+- An auditor saw the highlight flake in the first 10-15 s after launch (spurious exits, a highlight left on a control the mouse had left). Clean runs here (demo data at 5 s, real data under load average 44 at 4 s) did not show it; the one run that did coincided with a person moving the mouse at the same time. The position checks above cover both symptoms either way.
+- Cursor: a background app cannot change the cursor unless its window-server connection has the private `SetsCursorInBackground` property (`panel._cursor_in_background`, ctypes, best effort). With it the cursor is a pointing hand over controls while the editor is frontmost. The frontmost app keeps resetting the cursor (with the old single re-set 0.12 s later, it was an arrow again 1 s later on 2-6 of 8-10 controls across runs), hence the 0.1 s timer: sampled 15 times over 1.5 s of rest, the cursor was the hand 15/15 on each control (14/15 once). On mouse exit we do not touch the cursor (the app under it owns it). The highlight is the reliable cue; the cursor is best effort.
+- Native tooltips do not show while the app is inactive (WebKit drives them from its own mouse tracking). Setting `toolTip` on the web view from the forwarder showed nothing and coincided with a crash, so it was dropped. Since v3 the rack draws its own tooltip from the same `__hoverAt` calls (see "What changed in v3"); only the deck still uses native titles, which show after one click.
+- Hovering never activates the app.
+- `tools/shoot.py --hover` is the regression check: it brings iTerm2 to the front, glides the real mouse over controls, rests 1 s on each and prints the page's hovered element and whether the cursor is the hand, saves `hover-*.png` and `press-*.png`, checks the first click, then puts the mouse back. It starts 15 s after launch, waits until nobody touched the mouse or keyboard for 5 s, and prints a warning on any spot where the mouse was moved by someone else: the user often works on this machine while agents test, and a person moving the mouse produces exactly the "flaky hover" pattern. It needs Accessibility permission for the terminal (it has it here). `--no-fix` skips the tracking area to show the default behaviour.
+- Silhouettes come from `clip-path: path(...)` (generated into `ui/assets/outlines.css`); everything outside the rack is transparent.
+
+## Threading (verified by launching)
+
+- pywebview owns the main thread and the AppKit run loop (`webview.start`). The function passed to `start` runs in a worker thread: it attaches the menu-bar item, positions and shows the window, then polls every 2 s.
+- The rumps status item is attached to pywebview's NSApplication via `AppHelper.callAfter`, without `rumps.App.run()` (a rumps `NSApp` delegate is built by hand in `_attach_statusbar`). Activation policy is accessory, so no Dock icon.
+- `evaluate_js` and file dialogs block on the main thread, so they are never called from it. Menu callbacks run on the main thread and therefore start a thread. js_api calls already run in their own threads.
+- Checked on macOS 26 (Darwin 25.5): the status item exists (an `NSStatusBarWindow`; with the v3 graph icon and `4 active` it is 91x33 on a 1x screen). On this macOS the status item's window is not listed under the app's PID in `CGWindowListCopyWindowInfo`, so do not use that to check for it; ask the `NSStatusItem` instead.
+- Checked with real DOM clicks through the app: oval click shows only the deck, deck click shows only the panel, the same window id throughout; WEEK key re-buckets and saves the choice.
+
+## How the look is built
+
+- Native coordinates everywhere: CSS px = the original's pixels; Retina gives 2x for free.
+- Static chassis art is SVG drawn by `tools/make_shell.py` (run it after editing; it rewrites `ui/assets/panel-shell.svg`, `mini-shell.svg`, `mini-oval.svg`, `outlines.css`). It contains the window outline (smoothed from the measured per-row polygon), rail gradients, title glare and glints, display bezel, the tube between display and plate, the silver plate with its wavy bottom, the band panels and seams, the lower tube, the grille mesh, the oval's blue and chrome rings, and the DFX logo. Curves for the plate bottom, band bottom and grille top are sampled from the reference and fitted with Catmull-Rom splines.
+- Live parts are HTML on top (`ui/index.html`, `app.css`): display content, LED keys, labels, meters, the 7-segment column (SVG digits drawn in `app.js`, with ghost segments), the right-hand keys, band labels, the lime oval face.
+- Bars: 10px wide on a 23px pitch from x32, track y76-151. The fill gradient is tied to the screen (background-size of the full track, anchored to the bottom), using top/bottom colours fitted from the reference. Layer order: background, tracks, dark arc (60%), fills, dark arc (9%), grid lines (`rgba(149,179,22,.3)`), labels. The arc is an ellipse centred (158,177) native, radii 167x75, fitted from the capture.
+- Fonts: Arial 15px for the title (closest width to Segoe UI 15px), Trebuchet MS Bold for the bold caps labels and tab text (closest widths to Segoe UI Bold: PRESETS 44 vs 44px, SPEAKERS 46 vs 45px), Arial Bold Italic for the display axis text, Arial Black 11px for DOCK (same box as the original POWER), Impact (skewed, stretched with `textLength`) for the DFX letters. All ship with macOS; nothing is downloaded.
+- The page is one inlined HTML string (`panel.page()` inlines CSS, JS and SVG as data URIs) because pywebview loads it with `html=`.
+
+## Mapping onto the original's controls (v2)
+
+- Spectrum tab slot (lime): the graph's name and unit (v3). The Explore tab slot (silver, inert): session state with a round LED (v3; it showed the top model in v2).
+- 10 bars, one per tenth of the window. Heights are computed in Python, linear since v3 (`snapshot.height`). Full scale rises at once and falls one step a minute (`snapshot.stable`, state kept per (window, metric) in the controller). A scale not used for 10 s (its window was not shown) starts over at the target, so switching back to a window does not show it squashed for minutes.
+- TODAY spans at least 1 h, so before 01:00 (or within 100 s of midnight through bucket rounding) its spectrum reaches into yesterday. Its totals, rows and model tab do not: `aggregate(..., since=midnight)` counts only from local midnight, so "today" in the tooltips is true. The bars still cover the axis span.
+- Axis row (original 40Hz / FREQUENCY BANDS / 14kHz), all olive, same font: time labels (v3). Window start at x25.5 (the gap before bar 1), now at x255.5; first label left-aligned at x19, last right-aligned at x254.
+- Y labels: real values in the original label font and place (right edge x28), at y76, 95, 114, 133.
+- Effect rows: the square glossy toggle key keeps the original power glyph; the row LED is a thin strip across the top of the key (green/amber/red/unlit), the way DFX 9 skins showed an enabled effect. The original slider thumb sits at the end of the fill. Toggles and sliders are inert but hover and press like the real thing.
+- Digit column: the original box (x148-170, 23x141, two-tone blue LCD) and full-length meter tracks. The native capture shows upright 7-segment digits. Each row has up to three narrow upright cells (5.4x13) with ghost segments, centred on the column, so values are formatted to 3 cells: `fmtCount` gives 7, 412, 1.0k, 84k, 0.8M, 12M, 0.2G; `--` for unknown tokens.
+- Right column group 1 (originally 3 keys of 24px): NOW, 1H, TODAY, WEEK as 4 keys of 17px in the same outer box, selected style = MUSIC TYPE II. Group 2 (originally the SPEAKERS/HEADPHONES radio): the TOKENS/SESSIONS spectrum radio, selected = the SPEAKERS look, other = HEADPHONES look.
+- DOCK is the oval; `v`, `-`, MENU and the menu bar do the rest. PRESETS is CHIME and SKINS is ON TOP (v3 toggles).
+- Mini deck: left domes hide (`-`) and expand (`^`), top-right dome opens the menu, bottom-right dome and the key row are inert. The display shows exactly the rack's graph (metric, window, scale) under its current value (v3), with the window tag in its top-left corner.
+- Mini geometry: the reference `mini-mode-v10-blue-127x82-alpha.png` has a 3px shadow margin (body x3-123, y3-78), so native = (file - 3) * 1.2066, and the deck is 146x92. The DFX 11 manual image that shows main and mini at the same scale gives about 145x91, which confirms it. An auditor once proposed x1.15 and 155x100; that mapping puts the display in the wrong place, do not use it.
+- Mini layers: `mini-shell.svg` (rails, display bezel, tube, grille, band), then the HTML keys (clipped by `.mkeys` in `outlines.css`), then `mini-oval.svg` (blue ring, chrome, face bed) above the keys, then the lime face (`.moval`).
+- The deck's `^` glyph is an inline SVG path (8x5, stroke 1.6, butt caps), like the panel's `v` chevron. A rotated border box was used before and its mitred corner broke into two strokes at this size.
+
+## Real transcript formats (checked on a real machine, 2026-10-04)
+
+- Claude Code (`${CLAUDE_CONFIG_DIR:-~/.claude}`): main transcripts `projects/<proj>/<sid>.jsonl`, Task subagents `projects/<proj>/<sid>/subagents/agent-<id>.jsonl`, workflow agents `.../subagents/workflows/wf_<id>/agent-<id>.jsonl`. `agent-*.meta.json` and the workflow `journal.jsonl` sit in the same folders and are skipped. Session and subagent flag come from the path (`sources.identify`), not from records.
+- Subagents are most of a heavy day (95% of output tokens here). Summing main and subagent files does not double count: no message id appears in two files.
+- Streaming: one API message is several records (one per content block) with the same `message.id` and a growing `output_tokens`. Each record adds `max(0, out - max seen for that id)` at its own timestamp. Only the last 16 ids per file are remembered (repeats are adjacent). `<synthetic>` records (API errors, `isApiErrorMessage: true`) add an error and no tokens. Failed tool results (`is_error`) are routine and are not errors.
+- `<synthetic>` records that are not errors (zero usage, `message.id` a UUID) are written when a session resumes and repeat earlier `tool_use` blocks with their old ids, up to 107 at one timestamp. The 16-id window cannot dedup that, so tool_use blocks in any `<synthetic>` record are not counted. Measured over the week (1,211 files): 2,378 such blocks, none with an id not seen before in its file; skipping them gives exactly the full-dedup count (78,722). They still count as one event (a resume is activity).
+- Fast parse: only lines with `"assistant"` in their first 1 KB are `json.loads`ed (the role sits within the first ~200 bytes of every assistant record; measured max 201 over 100k records). User records take the first `"type"` and the last `"timestamp"` without a parse (the top-level timestamp comes after the content; checked against a full parse on 44k records). Both tolerate spaces after the colon. If Claude Code ever reorders keys so the role moves past 1 KB, tokens would silently drop: re-measure then.
+- `sessions/<pid>.json` also has `name` (Claude Code's session name, e.g. `brave-otter-12`, used in the menu), `cwd`, and a third status: `waiting`, with `waitingFor` (`dialog open`, `input needed`, `worker request`, `sandbox request`). Read from the Claude Code 2.1.289 bundle (function that builds the status): a permission prompt or a question is `waiting`, `isLoading || delegatedActive` is `busy` (so a paused workflow stays busy), anything else `idle`. `waiting` is not busy, so it is not "active", and the chime treats busy -> waiting like busy -> idle (the agent stopped and wants you). Seen live on 2026-10-05: a session waiting on a question had `status: waiting, waitingFor: input needed`. A real permission prompt was not watched, but it goes through the same `waiting` branch in the bundle.
+- Chime, tested end to end on 2026-10-05: a compiled stand-in binary named `claude` (a copy of `/bin/sleep` is killed at launch, so it must be built) gives a live pid; a `sessions/<pid>.json` for it in the demo root flipped from busy (since 30 s) to idle made the running app play one chime, record "Last stopped", and show it in the menu. In a 5 min watch of the real `sessions/` files no busy session stopped (they were long workflows), so a real Claude turn ending was not observed.
+- Idle open sessions get bookkeeping lines without a timestamp, so file mtime never means "working" for Claude. Liveness is a timestamped user/assistant record in the last 90 s in any of the session's files, or `sessions/<pid>.json` (pid must be in the `ps` set of `claude` processes) with `status: busy` and a record in any of its transcripts, or a `statusUpdatedAt` (epoch ms), in the last 30 min (`snapshot.BUSY_SILENCE`, the Bash maximum). Claude Code keeps `busy` for hours while a session waits, e.g. on paused workflow agents: on 2026-10-04 three busy sessions (three different projects) had no record in any transcript from about 13:00Z to 19:01Z, and v2 counted them live all that time. Past the cap they count as open, not working. The `sessions/` folder also holds `<pid>.<hash>.key` files; only `*.json` is read.
+- Cursor: `~/.cursor/projects/<project>/agent-transcripts/<id>/<id>.jsonl`, subagents in `<id>/subagents/*.jsonl`. Records are `{"role": ..., "message": {"content": [...]}}` with `text` and `tool_use` blocks (no ids), plus `{"type": "turn_ended", "status": "success"|"error"}`. No timestamps, no usage, no model. Bytes already on disk when a file is first read are dated by that moment's file mtime and kept in separate bins (`FileState.est`) that never count in NOW or as live. Lines appended later get the time they were seen. A file that first appears while the app runs counts entirely as new, using the (mtime, size) of the previous full walk (`Scanner.seen`) as the old baseline. Cursor-only users get `--` tokens and default to the SESSIONS spectrum.
+- Process matching: Cursor is any command under `/Cursor.app/`, or named `Cursor` / `Cursor Helper*` (a plain "contains Cursor" match also caught macOS's `CursorUIViewService`). Claude Code is a process whose command basename is `claude` (not Claude.app).
+- `~/.cursor/chats/**/store.db` is not read.
+
+## Polling and performance
+
+- `Scanner.listing(now)` stats files and touches no parsed state; `Scanner.apply()` parses under the lock. A full walk of both trees runs every `RESCAN_SECS` (30 s; ~0.2 s warm for 19k Claude + 4k Cursor files). In between, each 2 s poll stats the hot set (files touched in the last 15 min) and re-walks the `subagents/` folders of hot Claude sessions, so a new Task/workflow agent shows up within one poll.
+- Every file with an mtime inside the week is parsed, newest first, 0.5 s at a time (`PARSE_BUDGET`); while there is a backlog the loop polls again after 50 ms. The week here is ~1.2-1.3k files, 1.7 GB: 5 s of parsing on a quiet machine, 10-12 s with a load average of 44-58, and a cold first launch (nothing in the OS file cache) logged 28.9 s at a load average of 20-25 and 7.4 s on the next launch. NOW and 1H fill on the first poll; one huge active file can make that first poll slow because the budget is checked between files.
+- `loading` is per window: true until the first listing is applied, then while any backlog file has an mtime that could fall in the shown window (files are parsed newest first, so NOW is ready long before WEEK). While loading, the plot says "Loading…", the digit cells show `--` and the row LEDs are unlit, so it reads as "not ready" rather than "no activity".
+- Files are read line by line (a 50 MB transcript never sits in memory): steady RSS went from ~300 MB (whole-file reads) to ~80 MB. 71k bins for the week.
+- `ps` runs every 6 s (`PS_SECS`; ~0.1 s per call with a few hundred processes). `sessions/*.json` is read every poll (27 tiny files). A steady poll costs ~25 ms; building the WEEK snapshot ~0.1 s.
+
+## Visual iteration recipe
+
+1. `python3 tools/demo_data.py /tmp/dfx-demo --live &`
+2. `PYTHONPATH=src DFX_CURSOR_ROOT=/tmp/dfx-demo/cursor DFX_CLAUDE_ROOT=/tmp/dfx-demo/claude DFX_CONFIG=/tmp/dfx-demo/config.json .venv/bin/python tools/shoot.py /tmp/shots 5`
+3. Compare `/tmp/shots/panel.png` (2x) with a native 272x436 capture of the original classic blue skin scaled 2x, side by side or zoomed per region. Kill the demo writer afterwards.
+
+`shoot.py` also prints which views are visible after each dock/open/hide/show and the menu titles, which is the check for ruling 2 (only one window) and the close/minimize controls. `--tips` shows the rack tooltip on bars (1, 5, 6, 10) and controls through `__hoverAt` (no real mouse) and prints each box as `[left, top, width, height]`, `--menubar` captures the status item and its open menu (the menu shot shows whatever is on the user's screen behind it: do not publish it), `--top` checks Keep on Top, `--hover` is the real-mouse check (see "Hover while inactive"; it now includes bars 1, 5 and 10 and prints the tooltip text).
+
+On 2026-10-05 this machine had a single 1920x1080 screen at 1x, so `screencapture` gives 1x images. The v3 docs shots (`docs/panel.png`, `docs/deck.png`, 2x) come from an offscreen renderer instead (it writes 4x; the docs are downsampled to 2x with Lanczos, from freshly generated demo data so the bars look like a normal busy NOW): a WKWebView at -20000,-20000 loading `panel.page()` with `window.SAMPLE` set to a snapshot built by `snapshot.build` from the demo data, captured with `takeSnapshotWithConfiguration`. CSS transitions do not run offscreen, so it injects `*{transition:none}` (otherwise every bar renders empty). It lives in a session scratchpad and is about 70 lines. `docs/menubar.png` is the real `graph_icon` drawn into an offscreen NSButton (light and dark appearance, 2x), since the system appearance should not be flipped for a test. The live menu bar was also captured (1x, blue tinted bar) and the icon tints correctly there and while the menu is open.
+
+Keep `DFX_CONFIG` pointed away from the real config while testing (see "Packaging and releases" for the .app).
+
+## Known visual differences from the original
+
+- Up to three digit cells per row instead of one digit; 4 short keys instead of 3 tall ones; TOKENS/SESSIONS (bar and person glyphs, one-line labels) instead of SPEAKERS/HEADPHONES; an LED strip on the toggle keys; session state and a round LED in the Explore tab; the graph's value text on the deck display; real-value Y labels and time X labels; even grid rows (eighths) instead of the original's log rows; CHIME (with a bell) and ON TOP (with a pin) instead of PRESETS and SKINS; a window tag on the deck display; a tooltip box in the display's style. All deliberate, from the mockup, the spec or the v2/v3 design.
+- Hover and press looks have no original to match (the original skin had its own hover bitmaps we do not have); they are kept small: brightness, a lifted top line on black keys, a cyan halo on slider thumbs, a 1 px press.
+- The original panel has one bright glint (right title lip, x213) and soft glare shafts on both sides; that is what is drawn, not three glints.
+- Fonts are stand-ins for Segoe UI with ClearType; glyph shapes differ slightly, widths are close.
+- The title glare, grille mesh and DFX logo are redrawn, not the original bitmaps; at 400% the mesh pattern and the logo swoosh shape differ.
+- The deck's native size (146x92) comes from the 127x82 reference and the manual's combined image, not from a native capture. Its oval ring and the grille are slightly darker and softer in the reference, which is itself an upscaled small image.
+- Bar colours at the very top of the scale are extrapolated.
+
+## Other known gaps
+
+- The deck's tooltips (native) only show once the app is active, i.e. after one click; the rack has its own tooltip that works without that. The deck's window tag says which window the graph covers without a tooltip.
+- The pointer cursor while inactive relies on a private CGS connection property; if a future macOS drops it, the cursor stays an arrow until the rack is clicked (the highlight still works).
+- Clicking the rack activates the app, so the editor loses keyboard focus until you click back.
+- A brand-new Claude session (new main transcript) is found by the next full walk (up to 30 s); its live state comes from `sessions/<pid>.json` right away.
+- Window placement uses Cocoa screen coordinates directly; pywebview's own drag `move()` uses the window's original screen, so dragging between monitors of different heights may misplace the window.
+- By default the window floats above normal windows (status window level), like DFX's always-on-top mode; ON TOP (or the menu's Keep on Top) turns that off.
+- The chime only knows Claude Code sessions that have a `sessions/<pid>.json` (current Claude Code writes one for interactive sessions) and Cursor sessions by their transcript writes (up to 90 s late). It plays `NSSound` "Glass", at most once per 5 s; no macOS notification (an unbundled Python process cannot post them reliably).
+- TODAY's first X label is the floored first event (`8:30`), while the bars start up to 100 s earlier (rounding to 10 buckets), so the first bar's tooltip can say `8:28–…`.
+- The menu-bar icon is 24 pt wide on Retina (1.5 pt bars on a 2.5 pt pitch) and 29 pt on a 1x screen (2 pt on 3 pt, whole-point heights), chosen from the status item's screen when the icon is redrawn.
+
+## Packaging and releases (2026-10-05)
+
+- Renamed the package `cursor_scope` -> `dfx_agent_enhancer` and moved `ui/` into it (`src/dfx_agent_enhancer/ui/`, package data), so pip and py2app both carry it. Env vars are `DFX_CONFIG`, `DFX_CLAUDE_ROOT`, `DFX_CURSOR_ROOT`, `DFX_DEBUG`, `DFX_LAUNCH_AGENTS`; the old `CURSOR_SCOPE_*` names still work (`dfx_agent_enhancer.env`). The version lives only in `__init__.__version__` (pyproject reads it).
+- Config: `~/Library/Application Support/DFX Agent Enhancer/config.json`. On a run without `DFX_CONFIG`, if that file does not exist, an old `~/Library/Application Support/CursorScope/config.json` is moved there and the old folder removed if empty. rumps creates the folder named after the app (`rumps.App(APP_NAME)`), even for a test instance with `DFX_CONFIG` set.
+- The app: `DFX Agent Enhancer.app`, bundle id `com.orenyomtov.dfx-agent-enhancer` (also the LaunchAgent label), `LSUIElement` (no Dock icon), `LSMinimumSystemVersion` 11.0 (only tested on macOS 26). Built by py2app 0.28.10 with the python.org Python 3.14 (universal2, `/Library/Frameworks/Python.framework`); PyObjC 12.2.2, pywebview 6.2.1 and rumps have universal2 wheels for 3.14, so every binary in the app is `x86_64 arm64`. Checked: the arm64 build launched from a scratch copy (via `open`, outside any venv) and showed the rack and the menu-bar item; the x86_64 slice (`arch -x86_64`, Rosetta) drew the rack too. About 58 MB (tkinter and setuptools excluded), DMG about 26 MB. Build deps are pinned in `scripts/build-requirements.txt`. The anaconda venv in `.venv` is for development only; py2app does not work well with conda Pythons and it is arm64 only.
+- `build_release.sh` copies `src/`, `scripts/` and `tools/` to `/private/tmp/dfx-agent-enhancer-build` and builds there, so the bundle's .pyc files and Info.plist carry that path instead of the checkout's (which held the username); the app, DMG and py2app log are copied back to `build/` and `dist/`. py2app is run from that copy's `build/` (`scripts/py2app_setup.py`) so setuptools does not read pyproject.toml, and `scripts/app_main.py` is the entry script.
+- Signing: ad-hoc only (no Developer ID on this machine), so not notarized and `spctl` rejects it. py2app's own ad-hoc signing raised "Cannot sign bundle" (its retry loop is buggy), so `py2app_setup.py` patches it out and `build_release.sh` signs every Mach-O file one by one (py2app strips them after linking, which breaks their signatures, and arm64 kills a process that loads a library with a broken signature), then the bundle with `--deep`, then verifies.
+- Gatekeeper: curl does not set the quarantine attribute, so the install.sh copy opens normally (it also clears the attribute). A DMG downloaded in a browser is quarantined, and since macOS 15 the right-click > Open bypass no longer exists for unnotarized apps: the user opens it once, then allows it in System Settings > Privacy & Security > Open Anyway (or runs `xattr -dr com.apple.quarantine "/Applications/DFX Agent Enhancer.app"`). That flow was not clicked through here.
+- Launch at login (`login.py`): a LaunchAgent `~/Library/LaunchAgents/com.orenyomtov.dfx-agent-enhancer.plist` that runs `/usr/bin/open -g -a <app path>` (RunAtLoad, Aqua sessions only, `AssociatedBundleIdentifiers` so Login Items in System Settings shows the app rather than "open"). Not SMAppService, which needs a real signature. The plist file is the state; "Launch at Login" in the menu writes or removes it. Default on: the first time the .app runs (config has no `launchAtLogin` key) it turns it on; when the app has moved, the next launch rewrites the path. It does nothing when run from source, from the mounted DMG (`/Volumes/`) or from a translocated download (the menu item is greyed out then). For install.sh: `"<app>/Contents/MacOS/DFX Agent Enhancer" --launch-at-login on|off` sets it and exits without UI. Checked: menu toggle off/on removed and rewrote the plist; `launchctl bootstrap` of the same plist (test label) started the app; from the DMG nothing was written and the item was greyed.
+- install.sh: everything runs from `main` at the end, so a truncated `curl | bash` does nothing. It downloads `releases/latest/download/DFX-Agent-Enhancer.dmg` (or `DFX_DMG`: a local path or another URL), mounts it `-nobrowse` in a temp dir, quits any running copy (SIGTERM via `pkill -f "DFX Agent Enhancer.app/Contents/MacOS/DFX Agent Enhancer"`, SIGKILL after 5 s; `pgrep -x` cannot match because the process name is cut to 16 characters, and an AppleScript quit would raise an Automation prompt), replaces the app in `DFX_INSTALL_DIR` (default /Applications; no sudo, refuses to run as root, says what to do when the folder is not writable), clears quarantine, runs the `--launch-at-login on` flag and opens the app. `--uninstall` quits it, boots out and deletes the LaunchAgent, removes the app and pywebview's caches (`~/Library/WebKit/<bundle id>`, `~/Library/Caches/<bundle id>`) and leaves the config folder. Because `open` does not pass the shell's environment, install.sh forwards `DFX_CONFIG` with `open --env` (for test installs). Checked end to end into scratch dirs: fresh install, reinstall over a running copy (quit, replaced, relaunched), uninstall; and once through `cat install.sh | bash` with a `file://` URL and the real LaunchAgents folder, then `--uninstall` removed that plist.
+- DMG: `hdiutil` UDRW image with the app and an `/Applications` symlink, Finder AppleScript for the icon view (128 px icons, app on the left, Applications on the right, no background image), then UDZO. The layout needs Finder automation permission for the terminal; without it the script warns and ships the DMG without layout. The volume shows up in Finder for a moment during the build.
+- Icon: `tools/make_icon.py` draws it with AppKit (a chassis-blue rounded square, the black display with seven spectrum bars, the lime power oval in its chrome and blue rings) and runs `iconutil`; the build regenerates it every time.
+
+How to cut a release:
+
+1. Bump `__version__` in `src/dfx_agent_enhancer/__init__.py`.
+2. `scripts/build_release.sh` (needs the python.org Python 3.14 and Xcode command line tools; about 40 s). Output: `build/dist/DFX Agent Enhancer.app`, `dist/DFX-Agent-Enhancer.dmg`.
+3. Smoke test without touching the real install: `DFX_INSTALL_DIR=/tmp/x DFX_DMG=dist/DFX-Agent-Enhancer.dmg DFX_CONFIG=/tmp/x/config.json DFX_LAUNCH_AGENTS=/tmp/x/la bash install.sh`, look at the rack and the menu, then the same with `--uninstall`.
+4. `gh release create vX.Y.Z dist/DFX-Agent-Enhancer.dmg --title "vX.Y.Z" --notes "..."`. Keep the asset name `DFX-Agent-Enhancer.dmg`: install.sh and README link to `releases/latest/download/DFX-Agent-Enhancer.dmg`.
+
+Testing the .app: always give it `DFX_CONFIG` (and `DFX_LAUNCH_AGENTS`), with `open --env` or by running the binary directly. Without them it moves the real CursorScope config and, being a .app, writes the real LaunchAgent on its first run.
+
+## Usage reference (moved from README.md, 2026-10-05)
+
+The Python package is `dfx_agent_enhancer` (it was `cursor_scope` until 2026-10-05).
+
+### Run
+
+```
+python3 -m venv .venv && .venv/bin/pip install -e '.[test]'
+.venv/bin/python -m dfx_agent_enhancer
+```
+
+You get a menu-bar item and one floating window: either the open rack or, when docked, the small deck. Only one is ever on screen. Showing the window does not take focus from your editor.
+
+The menu-bar icon is the rack's graph in miniature: the same 10 bars, same metric, window and scale, redrawn live. Next to it is the number of sessions working now (`3 active`), or nothing when none are.
+
+| Control | Action |
+| --- | --- |
+| `v` (rack, top left), the lime DOCK oval | dock: collapse to the deck |
+| `-` (rack, top right), the deck's top-left dome | hide: the window goes away, the menu-bar item keeps running |
+| the deck's `^` dome, its display or its oval | expand to the rack |
+| MENU, the deck's top-right dome | the menu-bar menu |
+| CHIME (the old PRESETS panel) | on/off: play a sound when a session stops working. Its bell lights lime when on. Off by default |
+| ON TOP (the old SKINS panel) | on/off: keep the rack above other windows (on by default). Off, other windows can cover it like a desktop widget |
+
+The menu (from the menu bar, MENU or the deck's dome) starts with what is happening: `3 active · 27 open · 12k tokens/min`, today's totals, the names of the sessions working now (Claude Code's own session names, such as `brave-otter-12`, else the project folder), and the last session that stopped. Below that: Graph (Tokens / Sessions), Window (Now / Last hour / Today / Week), Chime, Keep on Top, Show / Hide, Dock / Expand, Launch at Login (greyed out when run from source), Quit. They change the same settings as the rack's keys.
+
+Drag either view by its blue chassis; the position is remembered. Every key, toggle, slider, tab and band panel highlights under the mouse (pointer cursor, brighter face, pressed look on click), even while another app is frontmost. Hover anything on the rack for a tooltip, including each bar (its time range and value); the tooltips work without clicking the rack first. The controls that are only decoration (the row toggles, sliders, tabs, the deck's keys) do nothing on release.
+
+### What the rack shows
+
+The time window is picked with NOW (5 min), 1H, TODAY (from your first activity today) and WEEK (rolling 7 days). Hover anything for the exact numbers.
+
+| Place | Meaning |
+| --- | --- |
+| Graph, TOKENS | output tokens per minute (incl. thinking) in each tenth of the window, Claude Code sessions and subagents. The lime tab names it: `Tokens/min ×1k` means a label of 40 is 40k tokens/min |
+| Graph, SESSIONS | sessions with activity in each tenth of the window (`Active sessions`); the last bar also counts every session working now |
+| Y labels | real values on a linear scale, at full scale, 3/4, 1/2 and 1/4. Full scale is 4, 8, 12, 20, 40 or 80 × 10^k, rises at once and falls one step a minute |
+| X labels | time: `-5m … now`, `-1h -45m -30m -15m now`, TODAY's start time and whole hours, WEEK's weekdays |
+| Bar tooltip | the bar's time range and its value: `15,020 tokens · 30k/min`, `no tokens`, `Cursor activity, no usage data`, `4 sessions active`. It sits at the top of the plot and moves beside a tall bar, so it never hides the bar it describes |
+| TOKENS / SESSIONS keys | switch the graph; remembered. Cursor-only setups default to SESSIONS |
+| Silver tab | session state now, in any window: `3 active · 27 open` (green LED), `Idle · 27 open` (amber), `No sessions`. The tooltip adds the output tokens of the last 60 s |
+| SESSIONS | NOW: sessions working now. Other windows: sessions with activity in it |
+| SUBAGENTS | Claude Task and workflow agents and Cursor subagents with activity in the window |
+| TOKENS | reported output tokens in the window (`--` when only Cursor was active: it reports no usage). The tooltip has the model shares |
+| TOOL CALLS | tool calls in the window (blocks Claude Code replays when a session resumes are not counted again) |
+| ERRORS | Claude API errors and failed Cursor turns (failed tool results are routine and do not count) |
+| LEDs | green: active in the last 90 s (ERRORS: none in the window). Amber: some in the window, idle now (SESSIONS: open but none working; ERRORS: none in the last 15 min). Red: an error in the last 15 min. Unlit: nothing |
+| Deck | the rack's graph, exactly, under its current value: `12k/min` (output tokens in the last 60 s), `3 ACTIVE`, `IDLE`, or `NO DATA` (tokens with no usage source). The olive tag in its corner names the graph's window: `NOW`, `1H`, `TODAY`, `WEEK` |
+
+Sliders are log-scaled and the 7-segment digits, centred in the blue column, show the value (`7`, `412`, `1.0k`, `84k`, `0.8M`, `12M`, `0.2G`). While the shown window is still being read (the first launch can take up to ~30 s for WEEK on a busy machine) the plot says "Loading…" and the digits show `--`. TODAY's numbers count from midnight; before 1 a.m. its spectrum still shows the last hour.
+
+"Working now" (active) for Claude Code means any of its transcripts (main or subagent) got a timestamped message in the last 90 s, or its `sessions/<pid>.json` says busy and the session wrote a message or changed status in the last 30 minutes (Claude Code keeps "busy" for hours while a session waits, so busy alone is not enough). For Cursor it means new transcript bytes in the last 90 s, or Cursor busy on CPU with a transcript touched in the last 10 minutes.
+
+### Data sources
+
+- Claude Code: `${CLAUDE_CONFIG_DIR:-~/.claude}/projects/*/<session>.jsonl` and `.../<session>/subagents/**/agent-*.jsonl`, plus `sessions/<pid>.json` for live state
+- Cursor: `~/.cursor/projects/*/agent-transcripts/**/*.jsonl`
+- Processes: `ps -axo pid,pcpu,rss,comm` every 6 seconds
+
+Override the roots with `DFX_CLAUDE_ROOT` and `DFX_CURSOR_ROOT`, and the config file (default `~/Library/Application Support/DFX Agent Enhancer/config.json`) with `DFX_CONFIG`. The old `CURSOR_SCOPE_*` names still work.
+
+### Try it with fake data
+
+```
+python3 tools/demo_data.py /tmp/dfx-demo --live &      # keeps appending lines
+DFX_CURSOR_ROOT=/tmp/dfx-demo/cursor DFX_CLAUDE_ROOT=/tmp/dfx-demo/claude \
+DFX_CONFIG=/tmp/dfx-demo/config.json .venv/bin/python -m dfx_agent_enhancer
+```
+
+`tools/shoot.py` runs the app the same way, captures the rack and the deck to PNG, walks dock / expand / hide / show, and quits. `--tips` captures tooltips, `--menubar` the status item and its menu, `--top` checks Keep on Top, and `--hover` moves the real mouse over the controls while another app is frontmost (see NOTES.md).
+
+The chime: a Claude Code session chimes when its `sessions/<pid>.json` status goes from busy to idle or to waiting (a permission prompt or a question) after at least 15 s busy; a process that exits does not chime. A Cursor session chimes when it stops writing after at least a minute of work, up to 90 s late. Several sessions stopping together give one sound.
+
+### Tests
+
+```
+.venv/bin/python -m pytest -q
+```
+
+### Layout
+
+```
+src/dfx_agent_enhancer/
+  __main__.py                  menu-bar item, config, poll loop, the --launch-at-login flag
+  sources.py                   transcript listing and parsing into 10 s bins, ps, Claude session files
+  snapshot.py                  windows, graph scales, time axis, rows, live state, the menu lines, chime transitions
+  panel.py                     the single pywebview window, its two views, hover while inactive, the menu-bar graph icon
+  login.py                     launch at login (the LaunchAgent plist)
+  ui/index.html, app.css, app.js  the rack and the deck (absolute native-pixel layout)
+  ui/assets/*.svg, outlines.css   static chassis art, generated by tools/make_shell.py
+tools/                         shell and icon generators, demo data, screenshot and hover runner
+tests/                         fixture-based tests
+scripts/                       build_release.sh, py2app config and entry point, pinned build requirements
+install.sh                     the curl | bash installer and uninstaller
+```
+
+See the sections above for decisions, the window model, threading, the real transcript formats and known gaps.
+
+## Public README and homepage (2026-10-05)
+
+- README.md is deliberately short (install, what it shows, launch at login, uninstall, privacy, build, not-affiliated note). It was drafted, then rewritten by grok (`cursor-agent -p --trust --mode ask --model grok-4.7-high`, run in an empty scratch dir; without `--trust` it stops at a workspace-trust prompt). The long reference lives in "Usage reference" above.
+- The GitHub Pages site is `docs/` on main: `docs/index.html` (single static file, inline CSS/JS, Google Fonts Geist, Geist Mono and Instrument Serif, no build step), `favicon.svg`, `apple-touch-icon.png`, `og.png` (1200x630 social card), plus the screenshots README also uses.
+- The user asked to "use https://vgpu.sh/". It is Vercel Labs' landing page for vgpu (a WebGPU library), not a page builder, so it was used as a style reference: pure black, Geist + a serif wordmark, left-aligned hero over a full-bleed animated canvas, a minimal tabbed install block with a fading hairline, mono uppercase card headers, and a source-to-outputs connector diagram. Our hero canvas draws the rack's 10 spectrum colours as bars on a 96x54 canvas, blurred by CSS (static under prefers-reduced-motion).
+- The star count comes from `api.github.com/repos/orenyomtov/dfx-agent-enhancer` and is hidden on failure or when it is 0.
+- `og.png` and `apple-touch-icon.png` are rendered with headless Chrome from `tools/og/og.html` (1200x630) and `tools/og/icon.html` (180x180), which load `panel.png` and `favicon.svg` from the same folder: copy `docs/panel.png` and `docs/favicon.svg` next to them first. Re-render if the panel screenshot changes.

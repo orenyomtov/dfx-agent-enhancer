@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DFX Agent Enhancer</title>
+<link rel="stylesheet" href="assets/outlines.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="mode-panel">
+
+<!-- ======================= main panel: 272 x 436, the classic blue DFX window ======================= -->
+<div id="panel" class="view">
+  <img class="shell pywebview-drag-region" src="assets/panel-shell.svg" alt="" draggable="false">
+  <div class="title pywebview-drag-region">DFX Agent Enhancer</div>
+  <button id="chev" class="winbtn chev" data-tip="Dock (collapse to the deck)"><svg viewBox="0 0 11 6"><path d="M1 0.9 5.5 5 10 0.9"/></svg></button>
+  <button id="dash" class="winbtn dash" data-tip="Hide (the menu-bar item keeps running)"></button>
+
+  <div class="screen">
+    <div class="tabstrip">
+      <span id="tab-lime" class="tab lime"><i class="ico-bars"><b></b><b></b><b></b><b></b></i><span id="lime-text">Tokens/min ×1k</span></span>
+      <span id="readout" class="tab silver"><i id="rled" class="rled off"></i><span id="tab-text">Loading…</span></span>
+    </div>
+    <div id="plot" class="plot">
+      <div id="tracks" class="layer"></div>
+      <div class="layer arc"></div>
+      <div id="fills" class="layer"></div>
+      <div class="layer arc thin"></div>
+      <div class="layer grid"><!-- linear scale: even rows at eighths of the 76 px track (y76 ... y151) -->
+        <i style="top:11px"></i><i style="top:20.5px"></i><i style="top:30px"></i><i style="top:39.5px"></i><i style="top:49px"></i>
+        <i style="top:58.5px"></i><i style="top:68px"></i><i style="top:77.5px"></i><i style="top:86px"></i>
+      </div>
+      <div id="ylab" class="db"><span style="top:11px">40</span><span style="top:30px">30</span><span style="top:49px">20</span><span style="top:68px">10</span></div>
+      <div id="axis" class="axis"></div>
+      <div id="note" class="note"></div>
+      <div id="cols" class="cols"></div>
+    </div>
+  </div>
+
+  <div class="rows">
+    <div class="row" id="row-sessions" style="top:187px"><span class="key-led"><svg class="pwr" viewBox="0 0 25 19"><path class="hl" d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/><path d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/></svg><i class="led off"></i></span><span class="lbl">SESSIONS</span><span class="track"><span class="fill"></span><i class="dots"></i><i class="thumb"></i></span></div>
+    <div class="row" id="row-subagents" style="top:215px"><span class="key-led"><svg class="pwr" viewBox="0 0 25 19"><path class="hl" d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/><path d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/></svg><i class="led off"></i></span><span class="lbl">SUBAGENTS</span><span class="track"><span class="fill"></span><i class="dots"></i><i class="thumb"></i></span></div>
+    <div class="row" id="row-tokens" style="top:243px"><span class="key-led"><svg class="pwr" viewBox="0 0 25 19"><path class="hl" d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/><path d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/></svg><i class="led off"></i></span><span class="lbl">TOKENS</span><span class="track"><span class="fill"></span><i class="dots"></i><i class="thumb"></i></span></div>
+    <div class="row" id="row-tools" style="top:271px"><span class="key-led"><svg class="pwr" viewBox="0 0 25 19"><path class="hl" d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/><path d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/></svg><i class="led off"></i></span><span class="lbl">TOOL CALLS</span><span class="track"><span class="fill"></span><i class="dots"></i><i class="thumb"></i></span></div>
+    <div class="row" id="row-errors" style="top:299px"><span class="key-led"><svg class="pwr" viewBox="0 0 25 19"><path class="hl" d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/><path d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/></svg><i class="led off"></i></span><span class="lbl">ERRORS</span><span class="track"><span class="fill"></span><i class="dots"></i><i class="thumb"></i></span></div>
+  </div>
+  <div id="digits" class="digits"></div>
+
+  <div class="keys g1">
+    <button class="wkey" data-w="now" data-tip="Last 5 minutes, in 30 s bars"><span class="ic"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="3.2"/></svg></span><span class="tx">NOW</span></button>
+    <button class="wkey" data-w="1h" data-tip="Last hour, in 6 min bars"><span class="ic"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.4" class="o"/><path d="M6 3.4V6l1.8 1.2" class="o"/></svg></span><span class="tx">1H</span></button>
+    <button class="wkey" data-w="today" data-tip="Today, from your first activity (at least the last hour)"><span class="ic"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="2.3"/><path d="M6 .8v1.6M6 9.6v1.6M.8 6h1.6M9.6 6h1.6M2.3 2.3l1.1 1.1M8.6 8.6l1.1 1.1M2.3 9.7l1.1-1.1M8.6 3.4l1.1-1.1" class="o"/></svg></span><span class="tx">TODAY</span></button>
+    <button class="wkey" data-w="week" data-tip="Last 7 days, in 16.8 h bars"><span class="ic"><svg viewBox="0 0 12 12"><rect x="1.6" y="2.4" width="8.8" height="8" rx=".8" class="o"/><path d="M1.6 4.8h8.8M4 1.2v2.2M8 1.2v2.2" class="o"/></svg></span><span class="tx">WEEK</span></button>
+  </div>
+  <div class="keys g2">
+    <button class="bkey" data-m="tokens" data-tip="Graph: output tokens per minute"><span class="ic"><svg viewBox="0 0 12 14"><path d="M.6 13.2h2.8V7.6H.6zM4.6 13.2h2.8V1.8H4.6zM8.6 13.2h2.8V5.2H8.6z"/></svg></span><span class="tx">TOKENS</span></button>
+    <button class="bkey" data-m="sessions" data-tip="Graph: active sessions"><span class="ic"><svg viewBox="0 0 12 14"><circle cx="6" cy="3.9" r="2.9"/><path d="M.6 13.4c0-4 2.4-5.9 5.4-5.9s5.4 1.9 5.4 5.9z"/></svg></span><span class="tx">SESSIONS</span></button>
+  </div>
+
+  <!-- the original PRESETS / MENU / SKINS panels: CHIME and ON TOP are toggles, their icon lights when on -->
+  <button id="chime" class="bandbtn presets"><i class="ico-bell"><svg viewBox="0 0 9 10"><path d="M4.5.6C2.9.6 1.9 1.8 1.9 3.5v2L.7 7.1v.6h7.6v-.6L7.1 5.5v-2C7.1 1.8 6.1.6 4.5.6zM3.3 8.4a1.2 1.2 0 0 0 2.4 0z"/></svg></i>CHIME</button>
+  <button id="menu" class="bandbtn menu" data-tip="Menu: sessions working now, today's totals, settings">MENU<i class="ico-list"><b></b><b></b><b></b></i></button>
+  <button id="top" class="bandbtn skins">ON TOP<i class="ico-pin"><svg viewBox="0 0 9 11"><path d="M2.3.6h4.4v1.1l-.9.5.5 3 1.5 1.3v.9H1.2v-.9l1.5-1.3.5-3-.9-.5z"/><path class="o" d="M4.5 7.4v3.2"/></svg></i></button>
+
+  <button id="oval" class="oval" data-tip="Dock (collapse to the deck)">
+    <svg class="pw" viewBox="0 0 88 45"><defs><linearGradient id="pwg" gradientUnits="userSpaceOnUse" x1="0" y1="4" x2="0" y2="26"><stop offset="0" stop-color="#222b02" stop-opacity=".5"/><stop offset=".55" stop-color="#222b02" stop-opacity=".75"/><stop offset="1" stop-color="#1d2600"/></linearGradient></defs><path d="M37.12 11.68A8.4 8.4 0 1 0 50.88 11.68M44 4.5V19"/></svg>
+    <span>DOCK</span>
+  </button>
+  <div id="tip" class="tip"></div>
+</div>
+
+<!-- ======================= mini deck: 146 x 92, the panel minimized ======================= -->
+<div id="mini" class="view">
+  <img class="shell pywebview-drag-region" src="assets/mini-shell.svg" alt="" draggable="false">
+  <button id="dome-hide" class="dome" style="left:7.2px;top:7.3px" title="Hide (the menu-bar item keeps running)"><b class="g-minus"></b></button>
+  <button id="dome-expand" class="dome" style="left:7.2px;top:24.9px" title="Expand to the panel"><svg class="g-up" viewBox="0 0 8 5"><path d="M1 4.2 4 1.2 7 4.2"/></svg></button>
+  <button id="dome-menu" class="dome" style="left:124.9px;top:7.3px" title="Menu"><b class="g-list"></b></button>
+  <button class="dome" style="left:124.9px;top:24.9px" title="(decorative)"><b class="g-skin"></b></button>
+  <div id="mscreen" class="mscreen pywebview-drag-region" title="Expand to the panel">
+    <div id="mtracks" class="layer"></div>
+    <div class="layer arc"></div>
+    <div id="mfills" class="layer"></div>
+    <div class="layer grid"><i style="top:2px"></i><i style="top:9px"></i><i style="top:16px"></i><i style="top:23px"></i><i style="top:29px"></i></div>
+    <div id="mini-text" class="mtext idle"><b id="mbig">…</b><small id="msmall"></small></div>
+    <i id="mwin" class="mwin"></i>
+  </div>
+  <div class="mkeys">
+    <i title="DFX (decorative)" class="mk black dfx" style="left:6.2px;width:23.8px">DFX</i>
+    <i title="Presets (decorative)" class="mk black p" style="left:29.2px;width:21.3px">P</i>
+    <i title="Music type I (decorative)" class="mk silver" style="left:50.9px;width:14px"><svg viewBox="0 0 8 10"><path d="M3 8.2a1.3 1.1 0 1 1-1.3-1.1H3V1.2c1 .9 2.6 1.6 3 3"/></svg></i>
+    <i title="Music type II (decorative)" class="mk palebl" style="left:64.9px;width:16.9px"><svg viewBox="0 0 8 10"><path d="M2.6 8a1.2 1 0 1 1-1.2-1H2.6V2.2l4.2-1v5.6a1.2 1 0 1 1-1.2-1h1.2"/></svg></i>
+    <i title="Speech (decorative)" class="mk silver" style="left:81px;width:14.5px"><svg viewBox="0 0 8 10"><circle cx="4" cy="3" r="1.6"/><path d="M1 9.4c0-2.6 1.4-3.8 3-3.8s3 1.2 3 3.8z"/></svg></i>
+    <i title="Speakers (decorative)" class="mk cyan" style="left:95.1px;width:21.9px"><svg viewBox="0 0 10 12"><rect x="1" y="1" width="8" height="10" rx="1" class="o"/><circle cx="5" cy="6" r="2.2" class="o"/></svg></i>
+    <i title="Headphones (decorative)" class="mk black hp" style="left:116.6px;width:23.4px"><svg viewBox="0 0 10 12"><path d="M1.6 8V5.6a3.4 3.4 0 0 1 6.8 0V8" class="o"/><rect x="1" y="7" width="2" height="3.6" rx=".6"/><rect x="7" y="7" width="2" height="3.6" rx=".6"/></svg></i>
+  </div>
+  <img class="shell rings" src="assets/mini-oval.svg" alt="" draggable="false">
+  <button id="mini-oval" class="moval" title="Expand to the panel"><svg viewBox="0 0 42.2 23"><path d="M17.1 7.2A5.7 5.7 0 1 0 25.1 7.2M21.1 2.4V11.6"/></svg></button>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

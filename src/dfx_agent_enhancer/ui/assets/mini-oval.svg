@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="146" height="92" viewBox="0 0 146 92">
+<defs>
+  <radialGradient id="mob" cx=".5" cy=".5" r=".5">
+    <stop offset=".66" stop-color="#1c3c70"/>
+    <stop offset=".76" stop-color="#2a4c7c"/>
+    <stop offset=".86" stop-color="#305389"/>
+    <stop offset=".93" stop-color="#3a62a4"/>
+    <stop offset=".975" stop-color="#4682d6"/>
+    <stop offset="1" stop-color="#2c4c86"/>
+  </radialGradient>
+  <clipPath id="mnotube"><rect x="0" y="0" width="146" height="70"/><rect x="0" y="79" width="146" height="20"/><rect x="45" y="60" width="56" height="30"/></clipPath>
+  <linearGradient id="moc" x1=".3" y1="0" x2=".7" y2="1">
+    <stop offset="0" stop-color="#fff"/><stop offset=".42" stop-color="#f2f2f2"/><stop offset=".6" stop-color="#c8c8c8"/>
+    <stop offset=".8" stop-color="#959595"/><stop offset="1" stop-color="#7a7a7a"/>
+  </linearGradient>
+</defs>
+  <ellipse cx="73" cy="74.5" rx="34.9" ry="17.4" fill="#030a16" clip-path="url(#mnotube)"/>
+  <ellipse cx="73" cy="74.5" rx="34" ry="16.4" fill="url(#mob)"/>
+  <ellipse cx="73" cy="74.2" rx="24.1" ry="13.2" fill="#061633"/>
+  <ellipse cx="73" cy="74.2" rx="23.5" ry="12.7" fill="url(#moc)"/>
+  <ellipse cx="73" cy="74.2" rx="21.4" ry="11.8" fill="#111c00" stroke="#6e6e6e" stroke-width=".6"/>
+</svg>

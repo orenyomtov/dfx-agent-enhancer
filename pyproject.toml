@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dfx-agent-enhancer"
+dynamic = ["version"]
+description = "DFX Agent Enhancer: a macOS menu-bar panel for Claude Code and Cursor agent activity"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+dependencies = [
+  "rumps>=0.4",
+  "pywebview>=5",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+dfx-agent-enhancer = "dfx_agent_enhancer.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/orenyomtov/dfx-agent-enhancer"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+version = {attr = "dfx_agent_enhancer.__version__"}
+
+[tool.setuptools.package-data]
+dfx_agent_enhancer = ["ui/*.*", "ui/assets/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

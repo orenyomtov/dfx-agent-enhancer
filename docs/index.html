@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DFX Agent Enhancer</title>
+<meta name="description" content="A macOS menu-bar widget that shows your Claude Code and Cursor agents at work, in the skin of the classic DFX Audio Enhancer.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="canonical" href="https://orenyomtov.github.io/dfx-agent-enhancer/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="DFX Agent Enhancer">
+<meta property="og:title" content="DFX Agent Enhancer">
+<meta property="og:description" content="Your Claude Code and Cursor agents, live in your menu bar, in the classic blue DFX skin.">
+<meta property="og:url" content="https://orenyomtov.github.io/dfx-agent-enhancer/">
+<meta property="og:image" content="https://orenyomtov.github.io/dfx-agent-enhancer/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The DFX Agent Enhancer rack showing tokens per minute for five active agent sessions">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="DFX Agent Enhancer">
+<meta name="twitter:description" content="Your Claude Code and Cursor agents, live in your menu bar, in the classic blue DFX skin.">
+<meta name="twitter:image" content="https://orenyomtov.github.io/dfx-agent-enhancer/og.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #000;
+  --fg: #ededed;
+  --muted: #a1a1a1;
+  --dim: #6b6b6b;
+  --line: rgba(255,255,255,.1);
+  --line2: rgba(255,255,255,.16);
+  --card: #0a0a0a;
+  --lime: #b4e33d;
+  --sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --pad: 16px;
+}
+@media (min-width: 768px) { :root { --pad: 32px; } }
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 400 16px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+a { color: inherit; text-decoration: none; }
+img { display: block; max-width: 100%; height: auto; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 0 var(--pad); }
+
+/* nav */
+nav {
+  position: fixed; inset: 0 0 auto 0; z-index: 10;
+  background: rgba(0,0,0,.6); backdrop-filter: saturate(160%) blur(12px); -webkit-backdrop-filter: saturate(160%) blur(12px);
+  border-bottom: 1px solid transparent; transition: border-color .3s;
+}
+nav.scrolled { border-bottom-color: var(--line); }
+nav .wrap { height: 56px; display: flex; align-items: center; gap: 12px; }
+.brand { display: flex; align-items: center; gap: 10px; font-family: var(--serif); font-size: 21px; letter-spacing: .01em; }
+.brand svg { width: 22px; height: 22px; }
+.brand .slash { color: var(--dim); font-family: var(--sans); font-weight: 300; font-size: 20px; }
+.navlinks { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.navlink { color: var(--muted); font-size: 14px; padding: 6px 8px; transition: color .2s; }
+.navlink:hover { color: var(--fg); }
+@media (max-width: 560px) { .navlink.hide-sm, .brand .name-long { display: none; } }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 36px; padding: 0 14px; border-radius: 8px; font: 500 14px/1 var(--sans);
+  border: 1px solid var(--line2); background: #0a0a0a; color: var(--fg);
+  transition: background .2s, border-color .2s, transform .2s; white-space: nowrap;
+}
+.btn:hover { background: #161616; border-color: rgba(255,255,255,.28); }
+.btn:active { transform: scale(.98); }
+.btn svg { width: 16px; height: 16px; flex: none; }
+.btn.primary { background: var(--fg); color: #000; border-color: var(--fg); }
+.btn.primary:hover { background: #fff; }
+.btn.lg { height: 44px; padding: 0 18px; font-size: 15px; border-radius: 10px; }
+.count { font-family: var(--mono); font-size: 12px; color: var(--muted); padding-left: 8px; margin-left: 2px; border-left: 1px solid var(--line2); }
+.count[hidden] { display: none; }
+
+/* hero */
+.hero::after { content: ""; position: absolute; inset: auto 0 0 0; height: 140px; z-index: 1; background: linear-gradient(transparent, var(--bg) 90%); pointer-events: none; }
+.hero { position: relative; min-height: 100svh; display: flex; align-items: center; padding: 96px 0 64px; overflow: hidden; isolation: isolate; }
+#spectrum {
+  position: absolute; left: -6%; top: -6%; width: 112%; height: 112%; z-index: -2;
+  filter: blur(36px) saturate(140%); opacity: .55;
+  -webkit-mask-image: radial-gradient(ellipse 70% 75% at 70% 75%, #000 20%, transparent 75%);
+          mask-image: radial-gradient(ellipse 70% 75% at 70% 75%, #000 20%, transparent 75%);
+}
+.grid-lines {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image: linear-gradient(to bottom, rgba(255,255,255,.055) 1px, transparent 1px);
+  background-size: 100% 48px;
+  -webkit-mask-image: radial-gradient(ellipse 60% 60% at 70% 55%, #000 10%, transparent 70%);
+          mask-image: radial-gradient(ellipse 60% 60% at 70% 55%, #000 10%, transparent 70%);
+}
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 64px; align-items: center; width: 100%; }
+h1 { margin: 0 0 20px; font: 400 clamp(56px, 7.4vw, 104px)/.92 var(--serif); letter-spacing: -.01em; }
+h1 em { font-style: italic; color: #cfcfcf; }
+.lede { margin: 0 0 36px; font-size: clamp(20px, 2.1vw, 26px); line-height: 1.35; font-weight: 400; color: var(--fg); max-width: 22em; letter-spacing: -.01em; }
+.lede span { color: var(--muted); }
+
+/* install block, in the spirit of vgpu's tabbed install */
+.install { max-width: 640px; }
+.tabs { display: flex; align-items: center; gap: 2px; font-size: 14px; margin-bottom: 12px; }
+.tab { background: none; border: 0; padding: 4px 2px; font: inherit; color: var(--dim); cursor: pointer; transition: color .2s; }
+.tab:hover { color: var(--muted); }
+.tab[aria-selected="true"] { color: var(--fg); }
+.tabs .dot { color: var(--dim); padding: 0 6px; }
+.rule { height: 1px; background: linear-gradient(90deg, rgba(255,255,255,.55), rgba(255,255,255,.12) 60%, transparent); margin-bottom: 14px; }
+.panes { position: relative; }
+.pane[hidden] { display: none; }
+.cmd {
+  display: flex; align-items: flex-start; gap: 12px;
+  font: 400 13.5px/1.6 var(--mono); color: var(--fg);
+  background: rgba(10,10,10,.75); border: 1px solid var(--line2); border-radius: 10px;
+  padding: 12px 10px 12px 16px;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.cmd code { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; padding-top: 3px; font: inherit; }
+.cmd .nw { white-space: nowrap; }
+.cmd .ps { color: var(--dim); user-select: none; -webkit-user-select: none; }
+.copy {
+  flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 7px;
+  border: 1px solid var(--line2); background: #111; color: var(--muted); cursor: pointer;
+  transition: color .2s, background .2s, border-color .2s;
+}
+.copy:hover { color: var(--fg); background: #1a1a1a; }
+.copy svg { width: 15px; height: 15px; grid-area: 1/1; transition: opacity .2s, transform .2s; }
+.copy .ok { opacity: 0; transform: scale(.6); color: var(--lime); }
+.copy.done { border-color: rgba(180,227,61,.5); }
+.copy.done .ic { opacity: 0; transform: scale(.6); }
+.copy.done .ok { opacity: 1; transform: none; }
+.note { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
+.note code { font: 13px var(--mono); color: var(--fg); }
+.ctas { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+
+.rack { position: relative; width: 340px; }
+.rack img { width: 100%; filter: drop-shadow(0 30px 60px rgba(0,40,140,.55)) drop-shadow(0 4px 12px rgba(0,0,0,.8)); animation: float 7s ease-in-out infinite; }
+.rack::before {
+  content: ""; position: absolute; inset: 12% -30% 0; z-index: -1;
+  background: radial-gradient(closest-side, rgba(40,110,255,.35), transparent); filter: blur(10px);
+}
+@keyframes float { 50% { transform: translateY(-8px); } }
+
+@media (max-width: 900px) {
+  .hero { min-height: 0; padding: 104px 0 120px; text-align: center; }
+  .hero + section { padding-top: 24px; }
+  .hero-grid { grid-template-columns: 1fr; gap: 48px; justify-items: center; }
+  .lede { margin-left: auto; margin-right: auto; }
+  .install { margin: 0 auto; text-align: left; width: 100%; }
+  .tabs { justify-content: center; }
+  .rule { background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent); }
+  .note { text-align: center; }
+  .ctas { justify-content: center; }
+  .rack { width: min(272px, 74vw); }
+  #spectrum { -webkit-mask-image: radial-gradient(ellipse 90% 45% at 50% 68%, #000 20%, transparent 75%); mask-image: radial-gradient(ellipse 90% 45% at 50% 68%, #000 20%, transparent 75%); }
+  .grid-lines { -webkit-mask-image: radial-gradient(ellipse 80% 45% at 50% 78%, #000 10%, transparent 70%); mask-image: radial-gradient(ellipse 80% 45% at 50% 78%, #000 10%, transparent 70%); }
+}
+@media (max-width: 420px) {
+  .cmd { font-size: 12.5px; padding-left: 12px; }
+  .ctas .btn { flex: 1 1 100%; }
+  .lede { font-size: 19px; }
+}
+
+/* sections */
+section { padding: 96px 0; }
+@media (max-width: 767px) { section { padding: 72px 0; } }
+.head { text-align: center; max-width: 640px; margin: 0 auto 56px; }
+h2 { margin: 0 0 14px; font: 400 clamp(32px, 4.4vw, 48px)/1.08 var(--sans); letter-spacing: -.035em; }
+.head p { margin: 0; color: var(--muted); font-size: 17px; }
+
+/* source -> outputs diagram */
+.src {
+  max-width: 400px; margin: 0 auto; border: 1px solid var(--line2); border-radius: 10px; background: var(--card);
+  font: 13px/1.9 var(--mono); overflow: hidden;
+}
+.src .bar, .card .bar {
+  display: flex; justify-content: space-between; gap: 8px; padding: 9px 14px; border-bottom: 1px solid var(--line);
+  font: 500 10.5px/1.4 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--fg);
+}
+.bar .meta { color: var(--dim); font-weight: 400; }
+.src ul { list-style: none; margin: 0; padding: 12px 16px 14px; color: var(--muted); }
+.src li span { color: var(--fg); }
+.tree { position: relative; height: 56px; max-width: 960px; margin: 0 auto; }
+.tree svg { width: 100%; height: 100%; overflow: visible; }
+.tree path { stroke: rgba(255,255,255,.28); stroke-width: 1; fill: none; vector-effect: non-scaling-stroke; }
+.tree .pulse { stroke: var(--lime); stroke-width: 1.5; stroke-dasharray: 24 400; animation: flow 3.2s linear infinite; opacity: .9; }
+@keyframes flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -424; } }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; max-width: 960px; margin: 0 auto; }
+.card { border: 1px solid var(--line2); border-radius: 10px; background: var(--card); overflow: hidden; display: flex; flex-direction: column; transition: border-color .3s, transform .3s; }
+.card:hover { border-color: rgba(255,255,255,.3); transform: translateY(-2px); }
+.card .body { flex: 1; display: grid; place-items: center; padding: 28px 18px; min-height: 200px; }
+.card .cap { padding: 0 16px 16px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.card .deck { width: 204px; }
+.card .menubar { width: 200px; border-radius: 6px; }
+.term { font: 12.5px/1.95 var(--mono); color: var(--muted); width: 100%; max-width: 240px; }
+.term .ok { color: var(--lime); }
+.term .g { color: #3ccf6e; }
+@media (max-width: 860px) {
+  .tree { display: none; }
+  .src { margin-bottom: 16px; }
+  .cards { grid-template-columns: 1fr; max-width: 400px; }
+}
+
+/* the rack, explained */
+.explain { max-width: 760px; margin: 0 auto; }
+.rows { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.rows li { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 20px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.rows b { font: 500 11px/1.9 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--fg); }
+.rows span { color: var(--muted); font-size: 15px; line-height: 1.55; }
+@media (max-width: 860px) {
+  .rows li { grid-template-columns: 1fr; gap: 4px; }
+}
+
+/* closing */
+.closing { text-align: center; position: relative; }
+.closing .install { margin: 0 auto; text-align: left; max-width: 880px; }
+.closing .tabs { justify-content: center; }
+.closing .rule { background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent); }
+.closing .note { text-align: center; }
+.closing .ctas { justify-content: center; }
+.small { margin-top: 40px; color: var(--dim); font-size: 13.5px; }
+.small code { font: 12.5px var(--mono); color: var(--muted); word-break: break-all; }
+
+footer { border-top: 1px solid var(--line); padding: 28px 0 calc(28px + env(safe-area-inset-bottom)); color: var(--dim); font-size: 13px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; }
+footer a { color: var(--muted); }
+footer a:hover { color: var(--fg); }
+
+/* entrance */
+.rise { opacity: 0; transform: translateY(14px); animation: rise .9s cubic-bezier(.2,.7,.2,1) forwards; }
+.d1 { animation-delay: .08s; } .d2 { animation-delay: .16s; } .d3 { animation-delay: .24s; } .d4 { animation-delay: .32s; } .d5 { animation-delay: .4s; }
+@keyframes rise { to { opacity: 1; transform: none; } }
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity .9s cubic-bezier(.2,.7,.2,1), transform .9s cubic-bezier(.2,.7,.2,1); }
+.reveal.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .rise, .reveal { animation: none; opacity: 1; transform: none; transition: none; }
+  .rack img, .tree .pulse { animation: none; }
+}
+</style>
+</head>
+<body>
+
+<nav id="nav">
+  <div class="wrap">
+    <a class="brand" href="./" aria-label="DFX Agent Enhancer home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#0d3fa8"/><rect x="6" y="15" width="3" height="11" rx="1" fill="#b4e33d"/><rect x="11" y="10" width="3" height="16" rx="1" fill="#b4e33d"/><rect x="16" y="6" width="3" height="20" rx="1" fill="#b4e33d"/><rect x="21" y="13" width="3" height="13" rx="1" fill="#b4e33d"/></svg>
+      <span class="slash">/</span><span>dfx<span class="name-long"> agent enhancer</span></span>
+    </a>
+    <div class="navlinks">
+      <a class="navlink hide-sm" href="#how">How it works</a>
+      <a class="navlink hide-sm" href="#install">Install</a>
+      <a class="btn star" href="https://github.com/orenyomtov/dfx-agent-enhancer" aria-label="Star DFX Agent Enhancer on GitHub">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        Star<span class="count" hidden></span>
+      </a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <canvas id="spectrum" aria-hidden="true"></canvas>
+  <div class="grid-lines" aria-hidden="true"></div>
+  <div class="wrap hero-grid">
+    <div>
+      <h1 class="rise">DFX Agent <em>Enhancer</em></h1>
+      <p class="lede rise d1">Watch your Claude Code and Cursor agents work from the menu bar. <span>In the classic blue DFX Audio Enhancer skin.</span></p>
+      <div class="install rise d2" data-install>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" aria-selected="true" data-tab="sh">Terminal</button><span class="dot">·</span><button class="tab" role="tab" aria-selected="false" data-tab="dmg">DMG</button>
+        </div>
+        <div class="rule"></div>
+        <div class="panes">
+          <div class="pane" data-pane="sh">
+            <div class="cmd"><code><span class="ps">$ </span><span class="c">curl -fsSL https://raw.githubusercontent.com/<wbr>orenyomtov/<span class="nw">dfx-agent-enhancer/</span><wbr>main/<wbr>install.sh | bash</span></code><button class="copy" type="button" aria-label="Copy install command"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-.5a1.5 1.5 0 00-1.5-1.5H4A1.5 1.5 0 002.5 3v5A1.5 1.5 0 004 9.5h.5"/></svg><svg class="ok" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3 3 7-7"/></svg></button></div>
+            <p class="note">Installs to /Applications and starts at login.</p>
+          </div>
+          <div class="pane" data-pane="dmg" hidden>
+            <div class="cmd"><code><span class="ps">1 </span>Download the DMG. Drag the app into Applications.
+<span class="ps">2 </span>Open it once, then System Settings &gt; Privacy &amp; Security &gt; Open Anyway.</code></div>
+            <p class="note">The app isn't notarized, so macOS asks once. The terminal install skips this step.</p>
+          </div>
+        </div>
+      </div>
+      <div class="ctas rise d3">
+        <a class="btn primary lg" href="https://github.com/orenyomtov/dfx-agent-enhancer/releases/latest/download/DFX-Agent-Enhancer.dmg">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 2v8.5M4.5 7 8 10.5 11.5 7M2.5 13.5h11"/></svg>Download for macOS
+        </a>
+        <a class="btn lg star" href="https://github.com/orenyomtov/dfx-agent-enhancer">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"/></svg>Star on GitHub<span class="count" hidden></span>
+        </a>
+      </div>
+    </div>
+    <div class="rack rise d4">
+      <img src="panel.png" width="272" height="436" alt="The DFX Agent Enhancer rack: a tokens-per-minute graph over the last five minutes, rows for sessions, subagents, tokens, tool calls and errors, and the green DOCK button">
+    </div>
+  </div>
+</header>
+
+<section id="how">
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>Every agent on one rack.</h2>
+      <p>It reads the transcripts your agents already write to disk, then merges tokens, sessions, subagents, tool calls and errors from Claude Code and Cursor into one live view.</p>
+    </div>
+    <div class="src reveal">
+      <div class="bar"><span>Local files</span><span class="meta">read only</span></div>
+      <ul>
+        <li><span>~/.claude</span>/projects &nbsp;transcripts</li>
+        <li><span>~/.claude</span>/sessions &nbsp;live state</li>
+        <li><span>~/.cursor</span>/projects &nbsp;transcripts</li>
+        <li><span>ps</span> &nbsp;running agents</li>
+      </ul>
+    </div>
+    <div class="tree reveal" aria-hidden="true">
+      <svg viewBox="0 0 960 56" preserveAspectRatio="none">
+        <path d="M480 0V28M160 28H800M160 28V56M480 28V56M800 28V56"/>
+        <path class="pulse" d="M480 0V28H160V56"/><path class="pulse" d="M480 0V56" style="animation-delay:-1s"/><path class="pulse" d="M480 0V28H800V56" style="animation-delay:-2s"/>
+      </svg>
+    </div>
+    <div class="cards">
+      <div class="card reveal">
+        <div class="bar"><span>Deck</span><span class="meta">docked</span></div>
+        <div class="body"><img class="deck" src="deck.png" width="146" height="92" alt="The docked deck showing 17k tokens per minute"></div>
+        <p class="cap">Dock the rack and it shrinks to a small deck with the same graph.</p>
+      </div>
+      <div class="card reveal">
+        <div class="bar"><span>Menu bar</span><span class="meta">live</span></div>
+        <div class="body"><img class="menubar" src="menubar.png" width="150" height="48" alt="The menu-bar icon, a tiny live graph next to 5 active, in light and dark mode"></div>
+        <p class="cap">A tiny copy of the graph, and how many agents are working right now.</p>
+      </div>
+      <div class="card reveal">
+        <div class="bar"><span>Privacy</span><span class="meta">offline</span></div>
+        <div class="body">
+          <div class="term">
+            <div><span class="ok">✓</span> reads local files</div>
+            <div><span class="ok">✓</span> reads the process list</div>
+            <div><span class="ok">✓</span> never touches your agents</div>
+            <div class="g">● 0 network calls</div>
+          </div>
+        </div>
+        <p class="cap">Nothing leaves your Mac. It only watches.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>What the rack shows</h2>
+      <p>Pick a window: NOW, 1H, TODAY or WEEK. Hover anything for the exact numbers.</p>
+    </div>
+    <div class="explain">
+      <ul class="rows reveal">
+        <li><b>Graph</b><span>Output tokens per minute across every session and subagent, or how many sessions are active. Switch with TOKENS / SESSIONS.</span></li>
+        <li><b>Sessions</b><span>Agents working now, or with activity in the window.</span></li>
+        <li><b>Subagents</b><span>Task and workflow agents, and Cursor subagents.</span></li>
+        <li><b>Tokens · Tool calls</b><span>Totals for the window, on the old EQ sliders and 7-segment digits.</span></li>
+        <li><b>Errors</b><span>API errors and failed turns. The LED goes red for 15 minutes.</span></li>
+        <li><b>Chime</b><span>Plays a sound when an agent finishes. Off by default.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="closing" id="install">
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>One-line install</h2>
+      <p>macOS only. Turn launch at login on or off from the menu-bar menu.</p>
+    </div>
+    <div class="install reveal" data-install>
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" aria-selected="true" data-tab="sh">Terminal</button><span class="dot">·</span><button class="tab" role="tab" aria-selected="false" data-tab="dmg">DMG</button>
+      </div>
+      <div class="rule"></div>
+      <div class="panes">
+        <div class="pane" data-pane="sh">
+          <div class="cmd"><code><span class="ps">$ </span><span class="c">curl -fsSL https://raw.githubusercontent.com/<wbr>orenyomtov/<span class="nw">dfx-agent-enhancer/</span><wbr>main/<wbr>install.sh | bash</span></code><button class="copy" type="button" aria-label="Copy install command"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-.5a1.5 1.5 0 00-1.5-1.5H4A1.5 1.5 0 002.5 3v5A1.5 1.5 0 004 9.5h.5"/></svg><svg class="ok" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3 3 7-7"/></svg></button></div>
+          <p class="note">Installs to /Applications and starts at login.</p>
+        </div>
+        <div class="pane" data-pane="dmg" hidden>
+          <div class="cmd"><code><span class="ps">1 </span>Download the DMG. Drag the app into Applications.
+<span class="ps">2 </span>Open it once, then System Settings &gt; Privacy &amp; Security &gt; Open Anyway.</code></div>
+          <p class="note">The app isn't notarized, so macOS asks once. The terminal install skips this step.</p>
+        </div>
+      </div>
+    </div>
+    <div class="ctas reveal">
+      <a class="btn primary lg" href="https://github.com/orenyomtov/dfx-agent-enhancer/releases/latest/download/DFX-Agent-Enhancer.dmg">Download DMG</a>
+      <a class="btn lg" href="https://github.com/orenyomtov/dfx-agent-enhancer">View on GitHub</a>
+    </div>
+    <p class="small reveal">To uninstall, run the same command with <code style="white-space:nowrap">bash -s -- --uninstall</code> in place of <code>bash</code>.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>A fan homage to the DFX Audio Enhancer skin. Not affiliated with or endorsed by the makers of DFX.</span>
+    <span><a href="https://github.com/orenyomtov/dfx-agent-enhancer">GitHub</a> &nbsp;·&nbsp; <a href="https://github.com/orenyomtov/dfx-agent-enhancer/releases/latest">Releases</a></span>
+  </div>
+</footer>
+
+<script>
+// install tabs + copy
+document.querySelectorAll('[data-install]').forEach(box => {
+  const tabs = box.querySelectorAll('.tab');
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.setAttribute('aria-selected', x === t));
+    box.querySelectorAll('.pane').forEach(p => p.hidden = p.dataset.pane !== t.dataset.tab);
+  }));
+});
+document.querySelectorAll('.copy').forEach(b => b.addEventListener('click', async () => {
+  const text = b.parentElement.querySelector('.c').textContent;
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {
+    const ta = Object.assign(document.createElement('textarea'), { value: text });
+    ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (_) {}
+    ta.remove();
+  }
+  b.classList.add('done'); b.setAttribute('aria-label', 'Copied');
+  clearTimeout(b._t); b._t = setTimeout(() => { b.classList.remove('done'); b.setAttribute('aria-label', 'Copy install command'); }, 1800);
+}));
+
+// live star count, hidden if the API is unavailable or the count is 0
+fetch('https://api.github.com/repos/orenyomtov/dfx-agent-enhancer')
+  .then(r => r.ok ? r.json() : null)
+  .then(d => {
+    const n = d && d.stargazers_count;
+    if (!n) return;
+    const s = n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(n);
+    document.querySelectorAll('.count').forEach(c => { c.textContent = s; c.hidden = false; });
+  }).catch(() => {});
+
+// nav border on scroll
+const nav = document.getElementById('nav');
+addEventListener('scroll', () => nav.classList.toggle('scrolled', scrollY > 8), { passive: true });
+
+// reveal on scroll
+const io = 'IntersectionObserver' in window && new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+}), { rootMargin: '0px 0px -8% 0px' });
+document.querySelectorAll('.reveal').forEach(el => io ? io.observe(el) : el.classList.add('in'));
+
+// hero background: the rack's spectrum, drawn small and blurred by CSS
+(() => {
+  const c = document.getElementById('spectrum'), g = c.getContext('2d');
+  const W = 96, H = 54; c.width = W; c.height = H;
+  const cols = ['#8fd13f', '#3fbf5a', '#2bb3a0', '#2b8fe0', '#2a5cf0', '#7a3fe0', '#d2338a', '#e0303a', '#ef6a1f', '#e8b51e'];
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let t0 = performance.now(), last = 0;
+  function draw(now) {
+    const t = (now - t0) / 1000, n = cols.length, bw = W / n;
+    g.clearRect(0, 0, W, H);
+    for (let i = 0; i < n; i++) {
+      const v = .35 + .3 * Math.sin(t * .7 + i * 1.3) + .2 * Math.sin(t * 1.9 + i * 2.7) + .12 * Math.sin(t * 3.1 + i);
+      const base = H * .78, h = Math.max(.08, Math.min(1, v)) * base * .9;
+      const gr = g.createLinearGradient(0, base - h, 0, base);
+      gr.addColorStop(0, cols[i]); gr.addColorStop(1, cols[i] + '22');
+      g.fillStyle = gr;
+      g.fillRect(i * bw + bw * .18, base - h, bw * .64, h);
+    }
+  }
+  function loop(now) {
+    if (now - last > 33) { draw(now); last = now; }
+    requestAnimationFrame(loop);
+  }
+  still ? draw(t0 + 2000) : requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

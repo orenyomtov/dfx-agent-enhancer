@@ -1,0 +1,17 @@
+altgraph==0.17.5
+bottle==0.13.4
+macholib==1.16.4
+modulegraph==0.19.7
+packaging==26.3
+proxy_tools==0.1.0
+py2app==0.28.10
+pyobjc-core==12.2.2
+pyobjc-framework-Cocoa==12.2.2
+pyobjc-framework-Quartz==12.2.2
+pyobjc-framework-Security==12.2.2
+pyobjc-framework-UniformTypeIdentifiers==12.2.2
+pyobjc-framework-WebKit==12.2.2
+pywebview==6.2.1
+rumps==0.4.0
+setuptools==84.0.0
+typing_extensions==4.16.0
