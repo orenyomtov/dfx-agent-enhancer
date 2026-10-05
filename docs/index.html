@@ -17,7 +17,7 @@
 <meta property="og:image" content="https://orenyomtov.github.io/dfx-agent-enhancer/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="The DFX Agent Enhancer rack showing tokens per minute for five active agent sessions">
+<meta property="og:image:alt" content="The DFX Agent Enhancer rack showing today's agent spend in dollars per hour">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="DFX Agent Enhancer">
 <meta name="twitter:description" content="Your Claude Code and Cursor agents, live in your menu bar, in the classic blue DFX skin.">
@@ -304,7 +304,7 @@ footer a:hover { color: var(--fg); }
       </div>
     </div>
     <div class="rack rise d4">
-      <img src="panel.png" width="272" height="436" alt="The DFX Agent Enhancer rack: a tokens-per-minute graph over the last five minutes, rows for sessions, subagents, tokens, tool calls and errors, and the green DOCK button">
+      <img src="panel.png" width="272" height="436" alt="The DFX Agent Enhancer rack: a dollars-per-hour graph of today, rows for sessions, subagents, spend, tool calls and errors, and the green DOCK button">
     </div>
   </div>
 </header>
@@ -313,7 +313,7 @@ footer a:hover { color: var(--fg); }
   <div class="wrap">
     <div class="head reveal">
       <h2>Every agent on one rack.</h2>
-      <p>It reads the transcripts your agents already write to disk, then merges tokens, sessions, subagents, tool calls and errors from Claude Code and Cursor into one live view.</p>
+      <p>It reads the transcripts your agents already write to disk, then merges spend, sessions, subagents, tool calls and errors from Claude Code and Cursor into one live view.</p>
     </div>
     <div class="src reveal">
       <div class="bar"><span>Local files</span><span class="meta">read only</span></div>
@@ -333,12 +333,12 @@ footer a:hover { color: var(--fg); }
     <div class="cards">
       <div class="card reveal">
         <div class="bar"><span>Deck</span><span class="meta">docked</span></div>
-        <div class="body"><img class="deck" src="deck.png" width="146" height="92" alt="The docked deck showing 17k tokens per minute"></div>
+        <div class="body"><img class="deck" src="deck.png" width="146" height="92" alt="The docked deck showing $40 per hour"></div>
         <p class="cap">Dock the rack and it shrinks to a small deck with the same graph.</p>
       </div>
       <div class="card reveal">
         <div class="bar"><span>Menu bar</span><span class="meta">live</span></div>
-        <div class="body"><img class="menubar" src="menubar.png" width="150" height="48" alt="The menu-bar icon, a tiny live graph next to 5 active, in light and dark mode"></div>
+        <div class="body"><img class="menubar" src="menubar.png" width="150" height="48" alt="The menu-bar icon, a tiny live graph next to 2 active, in light and dark mode"></div>
         <p class="cap">A tiny copy of the graph, and how many agents are working right now.</p>
       </div>
       <div class="card reveal">
@@ -361,14 +361,14 @@ footer a:hover { color: var(--fg); }
   <div class="wrap">
     <div class="head reveal">
       <h2>What the rack shows</h2>
-      <p>Pick a window: NOW, 1H, TODAY or WEEK. Hover anything for the exact numbers.</p>
+      <p>Pick a window: NOW, 1H, TODAY (the default, from midnight) or WEEK. Hover anything for the exact numbers.</p>
     </div>
     <div class="explain">
       <ul class="rows reveal">
-        <li><b>Graph</b><span>Output tokens per minute across every session and subagent, or how many sessions are active. Switch with TOKENS / SESSIONS.</span></li>
+        <li><b>Graph</b><span>Spend in dollars per hour across every Claude Code session and subagent, or how many sessions are active. Switch with SPEND / SESSIONS.</span></li>
         <li><b>Sessions</b><span>Agents working now, or with activity in the window.</span></li>
         <li><b>Subagents</b><span>Task and workflow agents, and Cursor subagents.</span></li>
-        <li><b>Tokens · Tool calls</b><span>Totals for the window, on the old EQ sliders and 7-segment digits.</span></li>
+        <li><b>Spend · Tool calls</b><span>Totals for the window, on the old EQ sliders and 7-segment digits. Spend is approximate: the usage your transcripts record, at Anthropic's API list prices.</span></li>
         <li><b>Errors</b><span>API errors and failed turns. The LED goes red for 15 minutes.</span></li>
         <li><b>Chime</b><span>Plays a sound when an agent finishes. Off by default.</span></li>
       </ul>

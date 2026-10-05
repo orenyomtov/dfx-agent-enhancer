@@ -1,3 +1,4 @@
+import os
 import re
 
 from dfx_agent_enhancer import panel
@@ -43,3 +44,28 @@ def test_menu_bar_icon_draws_tracks_and_fills():
 def test_menu_bar_icon_on_a_1x_screen_uses_whole_points():
     img = panel.graph_icon((0, 7.5, 0.5) + (0,) * 7, scale=1)
     assert tuple(img.size()) == (29, 16)
+
+
+def test_window_frame_and_oval_anchor_round_trip():
+    """The saved position is the oval centre in Cocoa screen coordinates (y up); a frame built
+    from it gives the same anchor back, also on a second display left of the main one (x < 0),
+    and docking keeps the oval where it was."""
+    for anchor in ((1160.0, 614.5), (-876.0, 547.5), (-756.0, 474.7)):
+        for mode in ("panel", "mini"):
+            f = panel.Panel._frame(mode, anchor)
+            assert (f.size.width, f.size.height) == panel.SIZE[mode]
+            back = panel.Panel._anchor_of(mode, f)
+            assert abs(back[0] - anchor[0]) <= 0.5 and abs(back[1] - anchor[1]) <= 0.5
+    f = panel.Panel._frame("panel", (100.0, 500.0))
+    assert f.origin.x == 100 - 136 and abs(f.origin.y + f.size.height - (500 + 401.5)) <= 0.5   # whole points
+
+
+def test_drag_regions_are_ours_and_hold_no_controls():
+    """pywebview's drag region (it misplaced the window on a second display of another height) is
+    not used; the page marks chassis parts with .drag and controls are never inside one."""
+    html = open(os.path.join(panel.UI_DIR, "index.html")).read()
+    assert "pywebview-drag-region" not in html
+    drags = re.findall(r'<(\w+)[^>]*class="[^"]*\bdrag\b[^"]*"', html)
+    assert drags == ["img", "div", "img", "div"]       # rack shell, title, deck shell, deck display
+    deck = html[html.index('id="mscreen"'):html.index('<div class="mkeys">')]
+    assert "<button" not in deck

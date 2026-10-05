@@ -12,10 +12,10 @@ import time
 from datetime import datetime, timedelta
 
 from . import sources
-from .sources import BIN, CLAUDE, CURSOR, ERRORS, EVENTS, OUT, TOOLS, FileState, Procs
+from .sources import BIN, CLAUDE, COST, CURSOR, ERRORS, EVENTS, OUT, TOOLS, FileState, Procs
 
 WINDOWS = ("now", "1h", "today", "week")
-METRICS = ("tokens", "sessions")
+METRICS = ("spend", "sessions")
 NB = 10                      # spectrum buckets
 WEEK = 7 * 86400
 SPAN = {"now": 300, "1h": 3600, "week": WEEK}
@@ -36,10 +36,10 @@ STUB = round(2 / 76, 3)      # 2 px of the 76 px track: the least a value above 
 # Full scale steps, linear axis: 4, 8, 12, 20, 40, 80 x 10^k. All divisible by 4, so the quarter
 # labels are integers, and with a x10^k multiplier on the tab they never need more than 2 digits.
 FS_STEPS = tuple(sorted({s * 10 ** k for s in (4, 8, 12, 20, 40, 80) for k in range(10)}))
-TOKENS_FLOOR = 4000          # tokens/min: a trickle does not fill the screen
+SPEND_FLOOR = 20             # $/h: one light session does not fill the screen
 SESSIONS_FLOOR = 4
 SCALE_STALE = 10             # a full scale not used for this long (window not shown) starts over
-RATE_SECS = 60               # the "now" token rate: reported output tokens in the last minute
+RATE_SECS = 60               # the "now" spend rate: $ in the last minute, as $/h
 DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")   # fixed: not the system locale
 # the chime: a session counts as having stopped only after it worked this long
 STOP_MIN = {CLAUDE: 15, CURSOR: 60}
@@ -47,7 +47,7 @@ STOP_MIN = {CLAUDE: 15, CURSOR: 60}
 ROW_FS = {
     "sessions": (10, 15, 30, 100),
     "subagents": (20, 100, 2000, 5000),
-    "tokens": (5e5, 5e6, 5e7, 2e8),
+    "spend": (50, 500, 5000, 20000),        # $; a heavy user spends ~$100-300/h at list prices
     "tools": (500, 5000, 1e5, 5e5),
     "errors": (10, 20, 100, 300),
 }
@@ -154,29 +154,28 @@ class Agg:
 
     def __init__(self, start: int, end: int, length: int | None, lookback: int):
         self.start, self.end, self.length, self.lookback = start, end, length, lookback
-        self.out = [0] * NB
+        self.out = [0] * NB          # per bucket: reported output tokens
+        self.usd = [0.0] * NB        # per bucket: $ at API list prices
         self.src = [0] * NB          # per bucket, events from: 1 Claude Code, 2 Cursor (no lookback)
         self.active = [set() for _ in range(NB)]
         self.sessions: set = set()
         self.subagents: set = set()
-        self.tokens = self.sub_tokens = self.tools = self.errors = self.events = 0
-        self.claude = False          # a Claude Code record in the window: tokens are known
+        self.tokens = self.tools = self.errors = self.events = 0
+        self.cost = self.sub_cost = 0.0
+        self.claude = False          # a Claude Code record in the window: spend is known
         self.cursor = False          # a Cursor record in the window
         self.last_error = 0.0
-        self.models: dict[str, list] = {}    # pretty name -> [tokens, newest bin]
-        self.nominal = start                 # where the axis says the window starts
+        self.models: dict[str, list] = {}    # model id -> [$, output tokens, newest bin]
 
 
-def aggregate(files, start: int, end: int, length: int | None = None, lookback: int = 0,
-              est: bool = True, models: bool = False, since: int | None = None) -> Agg:
-    """Sum bins in [since or start, end). With `length`, also split [start, end) into NB buckets
-    of that length, and count a session as active in a bucket when it has an event in
-    [bucket_end - lookback, bucket_end). `since` keeps TODAY's totals after midnight when its
-    spectrum starts earlier."""
+def aggregate(files, start: int, end: int, length: float | None = None, lookback: int = 0,
+              est: bool = True, models: bool = False) -> Agg:
+    """Sum bins in [start, end). With `length`, also split [start, end) into NB buckets of that
+    length (TODAY's is not a whole number of bins: a bin goes to the bucket its start is in), and
+    count a session as active in a bucket when it has an event in [bucket_end - lookback, bucket_end)."""
     a = Agg(start, end, length, lookback)
     lb = max(lookback, length or 0)
-    lo, b0, b1 = (start - (lb - (length or 0))) // BIN, start // BIN, end // BIN
-    bt = max(b0, (since or start) // BIN)
+    lo, b0, b1 = int((start - (lb - (length or 0))) // BIN), start // BIN, end // BIN
     for fs in files:
         if fs.mtime < lo * BIN - 60:
             continue    # records are written before their file's mtime
@@ -189,19 +188,18 @@ def aggregate(files, start: int, end: int, length: int | None = None, lookback: 
                     continue
                 t = b * BIN
                 if length and r[EVENTS]:
-                    i0 = max(0, (t - start) // length)
-                    i1 = min(NB - 1, (t - start + lb) // length - 1)
+                    i0 = max(0, int((t - start) // length))
+                    i1 = min(NB - 1, int((t - start + lb) // length) - 1)
                     for i in range(i0, i1 + 1):
                         a.active[i].add(key)
                 if b < b0:
                     continue
                 if length:
-                    i = (t - start) // length
+                    i = min(NB - 1, int((t - start) // length))
                     a.out[i] += r[OUT]
+                    a.usd[i] += r[COST]
                     if r[EVENTS]:
                         a.src[i] |= 1 if fs.kind == CLAUDE else 2
-                if b < bt:
-                    continue
                 if r[EVENTS]:
                     a.events += r[EVENTS]
                     a.sessions.add(key)
@@ -212,19 +210,21 @@ def aggregate(files, start: int, end: int, length: int | None = None, lookback: 
                     else:
                         a.cursor = True
                 a.tokens += r[OUT]
+                a.cost += r[COST]
                 if fs.sub:
-                    a.sub_tokens += r[OUT]
+                    a.sub_cost += r[COST]
                 a.tools += r[TOOLS]
                 if r[ERRORS]:
                     a.errors += r[ERRORS]
                     a.last_error = max(a.last_error, t)
         if models:
             for model, mb in fs.models.items():
-                for b, n in mb.items():
-                    if bt <= b < b1:
-                        m = a.models.setdefault(sources.pretty_model(model), [0, 0])
-                        m[0] += n
-                        m[1] = max(m[1], b)
+                for b, (n, c) in mb.items():
+                    if b0 <= b < b1:
+                        m = a.models.setdefault(model, [0.0, 0, 0])
+                        m[0] += c
+                        m[1] += n
+                        m[2] = max(m[2], b)
     return a
 
 
@@ -324,17 +324,6 @@ def row_fill(v, fs: float, lo: float) -> float:
 
 # ---------------------------------------------------------------- formatting
 
-def short(n: float, decimals: bool = True) -> str:
-    """15020 -> 15.0k, 20000 -> 20k (decimals=False), 1.2M."""
-    for div, unit in ((1e6, "M"), (1e3, "k")):
-        if n >= div:
-            v = n / div
-            if v >= 100 or (not decimals and v == int(v)):
-                return "%d%s" % (round(v), unit)
-            return "%.1f%s" % (v, unit)
-    return "%d" % n
-
-
 def compact(n: float) -> str:
     """Rates and scales: 640, 4.2k, 12k, 312k, 1.2M (one decimal only below 10)."""
     n = round(n)
@@ -343,6 +332,18 @@ def compact(n: float) -> str:
             v = n / div
             return ("%d" % round(v) if v >= 9.95 else ("%.1f" % v).rstrip("0").rstrip(".")) + unit
     return "%d" % n
+
+
+def money(x: float) -> str:
+    """Tooltips: $0.04, $4.20, $42, $1,234; under a cent but above 0: <$0.01."""
+    if 0 < x < 0.005:
+        return "<$0.01"
+    return "$%.2f" % x if x < 100 else "$" + format(round(x), ",")
+
+
+def money_short(x: float) -> str:
+    """Rates, the deck and the menu: $0.4, $4.2, $42, $420, $1.2k, $12k."""
+    return "$" + (("%.1f" % x).rstrip("0").rstrip(".") if x < 9.95 else compact(x))
 
 
 def dur(s: int) -> str:
@@ -383,14 +384,14 @@ def plural(n: int, word: str) -> str:
 
 # ---------------------------------------------------------------- time axis
 
-TODAY_STEPS = (900, 1800, 3600, 7200, 10800, 14400, 21600)
+TODAY_STEPS = (300, 600, 900, 1800, 3600, 7200, 10800, 14400, 21600)
 
 
 def midnight(now: float) -> int:
     return int(datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
 
 
-def axis(window: str, start: int, end: int, nominal: int) -> list[dict]:
+def axis(window: str, start: int, end: int) -> list[dict]:
     """Time labels for the axis row: [{x: 0..1 across the bars, text}]. The two ends are always
     shown; the page drops interior labels that would collide."""
     span = end - start
@@ -404,12 +405,10 @@ def axis(window: str, start: int, end: int, nominal: int) -> list[dict]:
         return ([{"x": 0, "text": "-1h"}] + [{"x": q / 4, "text": "-%dm" % (60 - 15 * q)} for q in (1, 2, 3)]
                 + [{"x": 1, "text": "now"}])
     inner = []
-    if window == "today":
-        first = hm(nominal)
-        mid = midnight(start)
+    if window == "today":             # starts at midnight
+        first = hm(start)
         for step in TODAY_STEPS:      # whole clock times, at most 4 of them
-            t0 = mid + -(-(start - mid) // step) * step
-            ticks = [t for t in range(t0, end, step) if t > start]
+            ticks = list(range(start + step, end, step))
             if len(ticks) <= 4:
                 break
         inner = [{"x": x(t), "text": hm(t)} for t in ticks]
@@ -427,39 +426,28 @@ def axis(window: str, start: int, end: int, nominal: int) -> list[dict]:
 
 
 def bucket_range(window: str, t0: float, t1: float, last: bool) -> str:
-    """NOW 20:39:30–20:40:00, 1H and TODAY 20:30–20:36, WEEK Tue 14:24 – Wed 07:12; the last bar ends at now."""
+    """NOW 20:39:30–20:40:00, 1H and TODAY 20:30–20:36, WEEK Tue 14:24 – Wed 07:12; the last bar ends
+    at now. TODAY's bars are under a minute long in the first ten minutes after midnight: seconds then."""
     if window == "week":
         return "%s – %s" % (clock(t0, True), "now" if last else clock(t1, True))
-    f = hms if window == "now" else hm
+    f = hms if window == "now" or t1 - t0 < 60 else hm
     return "%s–%s" % (f(t0), "now" if last else f(t1))
 
 
 # ---------------------------------------------------------------- snapshot
 
-def geometry(scanner: Scanner, window: str, now: float) -> tuple[int, int, int, int]:
-    """(start, bucket length, end, nominal start) in epoch seconds, on the 10 s bin grid; end is
-    the end of the current bin. TODAY starts at the first event today (floored to 10 min), or
-    at midnight, and spans at least 1 h; rounding to 10 buckets can start it up to 100 s early.
-    The spectrum may so reach into yesterday; TODAY's totals never do (see _series)."""
+def geometry(window: str, now: float) -> tuple[int, float, int]:
+    """(start, bucket length, end) in epoch seconds; end is the end of the current 10 s bin. TODAY
+    runs from local midnight to now, so its bars widen through the day (30 s at 00:05, 1.8 h at
+    18:00) and are not a whole number of bins; it spans at least 10 bins, so in the first 100 s
+    after midnight it ends a little after now."""
     end = (int(now // BIN) + 1) * BIN
-    if window != "today":
-        length = SPAN[window] // NB
-        return end - NB * length, length, end, end - NB * length
-    mid = midnight(now)
-    first = None
-    for fs in scanner.files.values():
-        if fs.mtime < mid:
-            continue
-        for d in (fs.bins, fs.est):
-            for b in d:
-                t = b * BIN
-                if mid <= t < end and (first is None or t < first):
-                    first = t
-    s0 = first // 600 * 600 if first is not None else mid
-    span = max(end - s0, 3600)
-    length = -(-span // (NB * BIN)) * BIN
-    start = end - NB * length
-    return start, length, end, (s0 if end - s0 >= 3600 else start)
+    if window == "today":
+        start = midnight(now)
+        span = max(end - start, NB * BIN)
+        return start, span / NB, start + span
+    length = SPAN[window] // NB
+    return end - NB * length, length, end
 
 
 def spectrum(a: Agg, metric: str, window: str, scales: dict | None, now: float) -> dict:
@@ -468,26 +456,27 @@ def spectrum(a: Agg, metric: str, window: str, scales: dict | None, now: float) 
     length = a.length
     ranges = [bucket_range(window, a.start + i * length, a.start + (i + 1) * length, i == NB - 1)
               for i in range(NB)]
-    if metric == "tokens":
+    if metric == "spend":
         # a rate, so a label means the same thing in every window and matches the deck
-        rates = [v * 60 / length for v in a.out]
-        fs = stable(scales, (window, metric), fs_up(max(rates), TOKENS_FLOOR), fs_down, now)
-        mult, labels = scale_labels(fs, 1000)
+        rates = [v * 3600 / length for v in a.usd]
+        fs = stable(scales, (window, metric), fs_up(max(rates), SPEND_FLOOR), fs_down, now)
+        mult, labels = scale_labels(fs, 1)
         tips = []
         for i in range(NB):
-            if a.out[i]:
-                line = "%s tokens · %s/min" % (format(a.out[i], ","), compact(rates[i]))
+            if a.usd[i] or a.out[i]:
+                line = "%s · %s/h\n%s output tokens" % (money(a.usd[i]), money_short(rates[i]), format(a.out[i], ","))
             elif a.src[i] & 1:
-                line = "no tokens"
+                line = "no spend"
             elif a.src[i] & 2:
                 line = "Cursor activity, no usage data"
             else:
                 line = "no activity"
             tips.append(ranges[i] + "\n" + line)
-        return {"tab": "Tokens/min ×" + compact(mult),
-                "tip": ("Output tokens per minute in each bar (incl. thinking), Claude Code sessions and subagents. "
-                        "Cursor reports no usage. Top of scale: %s/min." % compact(fs)),
-                "values": [round(r) for r in rates], "heights": [height(r, fs) for r in rates],
+        return {"tab": "Spend $/h" + (" ×%d" % mult if mult > 1 else ""),
+                "tip": ("Approximate API cost per hour in each bar: Claude Code sessions and subagents at Anthropic's "
+                        "list prices (input, output, cache writes and reads). Cursor reports no usage. "
+                        "Top of scale: %s/h." % money_short(fs)),
+                "values": [round(r, 2) for r in rates], "heights": [height(r, fs) for r in rates],
                 "fullScale": fs, "labels": labels, "known": a.claude or not a.events, "tips": tips}
     vals = [len(s) for s in a.active]
     fs = stable(scales, (window, metric), fs_up(max(vals), SESSIONS_FLOOR), fs_down, now)
@@ -500,12 +489,8 @@ def spectrum(a: Agg, metric: str, window: str, scales: dict | None, now: float) 
 
 
 def _series(scanner, window, now, est):
-    start, length, end, nominal = geometry(scanner, window, now)
-    since = midnight(now) if window == "today" else None
-    a = aggregate(scanner.files.values(), start, end, length, max(length, LIVE_SECS), est=est, models=True,
-                  since=since)
-    a.nominal = nominal
-    return a
+    start, length, end = geometry(window, now)
+    return aggregate(scanner.files.values(), start, end, length, max(length, LIVE_SECS), est=est, models=True)
 
 
 def _loading(scanner: Scanner, since: float) -> bool:
@@ -513,34 +498,50 @@ def _loading(scanner: Scanner, since: float) -> bool:
     return not scanner.started or any(r[0] >= since for r in scanner.backlog)
 
 
-def token_rate(scanner: Scanner, now: float) -> int | None:
-    """Reported output tokens in the 60 s up to now; None when no source reports usage. Bins are
-    10 s, so the current (partial) bin and the 5 before it count in full and the bin before those
-    counts for the part of it still inside the minute. The value then covers exactly 60 s and
-    slides smoothly instead of jumping each time a bin leaves the window."""
+def spend_rate(scanner: Scanner, now: float) -> float | None:
+    """$/h over the 60 s up to now; None when no source reports usage. Bins are 10 s, so the
+    current (partial) bin and the 5 before it count in full and the bin before those counts for the
+    part of it still inside the minute. The value then covers exactly 60 s and slides smoothly
+    instead of jumping each time a bin leaves the window."""
     if not scanner.found[CLAUDE]:
         return None
     files, c = scanner.files.values(), int(now // BIN) * BIN
-    recent = aggregate(files, c + BIN - RATE_SECS, c + BIN, est=False).tokens
-    oldest = aggregate(files, c - RATE_SECS, c + BIN - RATE_SECS, est=False).tokens
-    return round(recent + oldest * (c + BIN - now) / BIN)
+    recent = aggregate(files, c + BIN - RATE_SECS, c + BIN, est=False).cost
+    oldest = aggregate(files, c - RATE_SECS, c + BIN - RATE_SECS, est=False).cost
+    return round((recent + oldest * (c + BIN - now) / BIN) * 3600 / RATE_SECS, 6)
 
 
-def build(scanner: Scanner, window: str = "now", metric: str | None = None, procs: Procs | None = None,
+def model_list(a: Agg) -> str:
+    """Model shares of the spend, biggest first: "Opus 5 62%, Sonnet 5 38%"; models priced by their
+    family or not priced at all are marked."""
+    ranked = sorted(a.models.items(), key=lambda kv: (kv[1][0], kv[1][1], kv[1][2]), reverse=True)
+    total = sum(v[0] for _, v in ranked) or 1
+    out = []
+    for model, (c, n, _) in ranked:
+        p = sources.price(model)
+        if p is None:
+            out.append("%s (no price)" % sources.pretty_model(model))
+            continue
+        share = ("%d%%" % round(100 * c / total)) if c * 200 >= total else "<1%"
+        out.append("%s %s%s" % (sources.pretty_model(model), share, "" if p[1] else " (estimate)"))
+    return ", ".join(out)
+
+
+def build(scanner: Scanner, window: str = "today", metric: str | None = None, procs: Procs | None = None,
           agents=None, now: float | None = None, scales: dict | None = None, live=None) -> dict:
     """`live`: (working, open) session keys from live_state, when the caller already has them."""
     now = time.time() if now is None else now
     procs = procs or Procs()
-    window = window if window in WINDOWS else "now"
+    window = window if window in WINDOWS else "today"
     if metric not in METRICS:
         # sessions is the only spectrum a Cursor-only user can fill
-        metric = "tokens" if scanner.found[CLAUDE] or not scanner.found[CURSOR] else "sessions"
+        metric = "spend" if scanner.found[CLAUDE] or not scanner.found[CURSOR] else "sessions"
     wi = WINDOWS.index(window)
     files = scanner.files.values()
 
     # Cursor lines already on disk at launch are dated by file mtime: never in NOW, never live
     a = _series(scanner, window, now, est=window != "now")
-    end = a.end
+    end = (int(now // BIN) + 1) * BIN       # not a.end: TODAY's can lie ahead in the first 100 s after midnight
     recent = aggregate(files, end - LIVE_SECS, end, est=False)
     err_recent = aggregate(files, end - ERROR_RECENT, end, est=False).errors
     working, opened = live if live is not None else live_state(scanner, procs, agents, now)
@@ -548,7 +549,7 @@ def build(scanner: Scanner, window: str = "now", metric: str | None = None, proc
     # The last bar counts every session working now, also one Claude Code reports busy that wrote
     # nothing in the lookback (a long tool call), so it agrees with the deck, the tab and the title.
     a.active[-1] |= working
-    rate = token_rate(scanner, now)
+    rate = spend_rate(scanner, now)
     live_loading = _loading(scanner, now - LIVE_SECS - 60)
 
     spec = {m: spectrum(a, m, window, scales, now) for m in METRICS}
@@ -562,22 +563,19 @@ def build(scanner: Scanner, window: str = "now", metric: str | None = None, proc
         stip = ("%s working now, %d open" % (plural(active, "session"), nopen)) if nopen else "No sessions open"
     else:
         stip = "%s with activity %s. %d working now, %d open" % (plural(sessions_v, "session"), when, active, nopen)
-    tokens_v = a.tokens if (a.claude or not a.events) else None
-    if tokens_v is None:
-        ttip = "No usage data %s: Cursor does not report usage." % when
+    spend_v = round(a.cost, 6) if (a.claude or not a.events) else None
+    if spend_v is None:
+        ptip = "No usage data %s: Cursor does not report usage." % when
     else:
-        ttip = ("%s output tokens %s (incl. thinking)" % (format(tokens_v, ","), when) if tokens_v
-                else "No output tokens %s" % when)
-        if tokens_v and a.sub_tokens:
-            ttip += ", %d%% from subagents" % round(100 * a.sub_tokens / tokens_v)
-        ttip += "."
+        ptip = ("About %s %s at Anthropic's API list prices (input, output, cache writes and reads), %s output tokens"
+                % (money(spend_v), when, format(a.tokens, ",")) if spend_v or a.tokens else "No spend %s" % when)
+        if spend_v and a.sub_cost:
+            ptip += ", %d%% from subagents" % round(100 * a.sub_cost / spend_v)
+        ptip += "."
         if a.models:
-            ranked = sorted(a.models.items(), key=lambda kv: (kv[1][0], kv[1][1]), reverse=True)
-            total = sum(v[0] for _, v in ranked) or 1
-            ttip += " Models: %s." % ", ".join(
-                "%s %s" % (n, ("%d%%" % round(100 * v[0] / total)) if v[0] * 200 >= total else "<1%") for n, v in ranked)
+            ptip += " Models: %s." % model_list(a)
         if a.cursor:
-            ttip += " Cursor does not report usage."
+            ptip += " Cursor does not report usage."
     if a.errors:
         etip = "%s %s (Claude Code API errors and failed Cursor turns), last at %s" % (
             plural(a.errors, "error"), when, clock(a.last_error, window == "week"))
@@ -593,9 +591,9 @@ def build(scanner: Scanner, window: str = "now", metric: str | None = None, proc
          "led": led(len(a.subagents), recent.subagents),
          "tip": "%s active %s (Claude Code Task and workflow agents, Cursor subagents)" % (
              plural(len(a.subagents), "subagent"), when)},
-        {"id": "tokens", "label": "TOKENS", "value": tokens_v,
-         "fill": row_fill(tokens_v, ROW_FS["tokens"][wi], ROW_FS["tokens"][wi] / 1000),
-         "led": "off" if tokens_v is None else led(tokens_v, recent.tokens), "tip": ttip},
+        {"id": "spend", "label": "SPEND", "value": spend_v,
+         "fill": row_fill(spend_v, ROW_FS["spend"][wi], ROW_FS["spend"][wi] / 1000),
+         "led": "off" if spend_v is None else led(spend_v, recent.cost), "tip": ptip},
         {"id": "tools", "label": "TOOL CALLS", "value": a.tools,
          "fill": row_fill(a.tools, ROW_FS["tools"][wi], 0.5), "led": led(a.tools, recent.tools),
          "tip": "%s %s" % (plural(a.tools, "tool call"), when)},
@@ -616,16 +614,16 @@ def build(scanner: Scanner, window: str = "now", metric: str | None = None, proc
         else:
             text, rled, rtip = "No sessions", "off", "No sessions open."
         if rate is not None:
-            rtip += " %s output tokens in the last minute." % format(rate, ",")
+            rtip += " Spend in the last minute: %s (%s/h, approximate)." % (money(rate / 60), money_short(rate))
         readout = {"text": text, "led": rled, "tip": rtip}
 
     # the deck's big text: the current value of the graph it shows
     idle = {"big": "IDLE", "small": ""}
     if live_loading:
         deck = {"big": "…", "small": ""}
-    elif metric == "tokens":
+    elif metric == "spend":
         deck = ({"big": "NO DATA", "small": ""} if rate is None else
-                idle if not active and not rate else {"big": compact(rate), "small": "/min"})
+                idle if not active and rate < 0.05 else {"big": money_short(rate), "small": "/h"})
     else:
         deck = {"big": str(active), "small": "ACTIVE"} if active else idle
 
@@ -635,14 +633,15 @@ def build(scanner: Scanner, window: str = "now", metric: str | None = None, proc
         "loading": _loading(scanner, a.start - LIVE_SECS - 60),
         "updatedAt": datetime.fromtimestamp(now).astimezone().isoformat(timespec="seconds"),
         "bucketSecs": a.length,
-        "axis": axis(window, a.start, a.end, a.nominal),
+        "axis": axis(window, a.start, a.end),
         "spectrum": spec,
         "rows": rows,
         "now": {"active": active, "open": nopen, "rate": rate},
         "readout": readout,
         "deckText": deck,
-        "deckTip": "%s, %s. Click to expand." % ("Tokens/min" if metric == "tokens" else "Active sessions",
-                                                 SHOWN[window]),
+        "deckTip": "%s, %s. Click to expand." % (
+            "Spend $/h (approximate API cost; Cursor reports no usage)" if metric == "spend" else "Active sessions",
+            SHOWN[window]),
         "menuTitle": "%d active" % active if active and not live_loading else "",
     }
 
@@ -720,11 +719,11 @@ def menu_lines(scanner: Scanner, agents, working, opened, now: float) -> list[tu
     active, nopen = len(working), len(opened)
     head = ("%d active · %d open" % (active, nopen) if active
             else "Idle · %d open" % nopen if nopen else "No sessions")
-    rate = token_rate(scanner, now)
-    if rate is not None and (active or rate):
-        head += " · %s tokens/min" % compact(rate)     # the same format as the deck
+    rate = spend_rate(scanner, now)
+    if rate is not None and (active or rate >= 0.05):
+        head += " · %s/h" % money_short(rate)     # the same format as the deck
     t = aggregate(scanner.files.values(), midnight(now), (int(now // BIN) + 1) * BIN)
-    parts = ["%s tokens" % short(t.tokens)] if scanner.found[CLAUDE] else []
+    parts = ["%s at API prices" % money(t.cost)] if scanner.found[CLAUDE] else []
     parts += [plural(t.tools, "tool call"), plural(t.errors, "error")]
     lines = [(head, 0), ("Today: " + " · ".join(parts), 0)]
     names: dict = {}        # several sessions in one project folder: one line, "code-demo ×2"

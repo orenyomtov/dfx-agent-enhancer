@@ -31,7 +31,8 @@ CHIME_GAP = 5        # seconds: several sessions stopping together give one chim
 INFO_TAG = 4242      # the menu's status lines, rebuilt each time it opens
 DEBUG = bool(env("DEBUG"))
 WINDOW_NAMES = (("now", "Now"), ("1h", "Last hour"), ("today", "Today"), ("week", "Week"))
-METRIC_NAMES = (("tokens", "Tokens"), ("sessions", "Sessions"))
+METRIC_NAMES = (("spend", "Spend"), ("sessions", "Sessions"))
+CONFIG_VERSION = 2   # 2: TODAY is the default window (a saved NOW moved to it once), the tokens graph is spend
 
 
 OLD_CONFIG = "~/Library/Application Support/CursorScope/config.json"   # before the rename
@@ -95,10 +96,19 @@ class Controller:
     def __init__(self):
         self.cfg = load_config()
         self.cfg.pop("pinnedRepo", None)     # v1 setting, gone in v2
+        if self.cfg.get("version", 1) < CONFIG_VERSION:
+            # NOW was the default before; the user asked for TODAY, so a saved NOW moves once
+            if self.cfg.get("window") == "now":
+                self.cfg["window"] = "today"
+            if self.cfg.get("metric") == "tokens":
+                self.cfg["metric"] = "spend"
+            self.cfg["version"] = CONFIG_VERSION
+            if os.path.exists(config_path()):
+                save_config(self.cfg)
         if self.cfg.get("window") not in snapshot.WINDOWS:
-            self.cfg["window"] = "now"
+            self.cfg["window"] = "today"
         if self.cfg.get("metric") not in snapshot.METRICS:
-            self.cfg.pop("metric", None)      # unset: tokens, or sessions for a Cursor-only user
+            self.cfg.pop("metric", None)      # unset: spend, or sessions for a Cursor-only user
         self.scanner = snapshot.Scanner()
         self.lock = threading.Lock()
         self.procs = sources.Procs()
@@ -345,7 +355,7 @@ class Controller:
         if self.ui:
             self.items["shown"].title = "Show" if self.ui.hidden else "Hide"
             self.items["dock"].title = "Expand" if self.ui.mode == "mini" else "Dock"
-        metric = self.snap["metric"] if self.snap else self.cfg.get("metric", "tokens")
+        metric = self.snap["metric"] if self.snap else self.cfg.get("metric", "spend")
         for m, _ in METRIC_NAMES:
             self.items["metric:" + m].state = int(m == metric)
         for w, _ in WINDOW_NAMES:

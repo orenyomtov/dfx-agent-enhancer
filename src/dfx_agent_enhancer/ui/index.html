@@ -10,14 +10,14 @@
 
 <!-- ======================= main panel: 272 x 436, the classic blue DFX window ======================= -->
 <div id="panel" class="view">
-  <img class="shell pywebview-drag-region" src="assets/panel-shell.svg" alt="" draggable="false">
-  <div class="title pywebview-drag-region">DFX Agent Enhancer</div>
+  <img class="shell drag" src="assets/panel-shell.svg" alt="" draggable="false">
+  <div class="title drag">DFX Agent Enhancer</div>
   <button id="chev" class="winbtn chev" data-tip="Dock (collapse to the deck)"><svg viewBox="0 0 11 6"><path d="M1 0.9 5.5 5 10 0.9"/></svg></button>
   <button id="dash" class="winbtn dash" data-tip="Hide (the menu-bar item keeps running)"></button>
 
   <div class="screen">
     <div class="tabstrip">
-      <span id="tab-lime" class="tab lime"><i class="ico-bars"><b></b><b></b><b></b><b></b></i><span id="lime-text">Tokens/min ×1k</span></span>
+      <span id="tab-lime" class="tab lime"><i class="ico-bars"><b></b><b></b><b></b><b></b></i><span id="lime-text">Spend $/h</span></span>
       <span id="readout" class="tab silver"><i id="rled" class="rled off"></i><span id="tab-text">Loading…</span></span>
     </div>
     <div id="plot" class="plot">
@@ -39,7 +39,7 @@
   <div class="rows">
     <div class="row" id="row-sessions" style="top:187px"><span class="key-led"><svg class="pwr" viewBox="0 0 25 19"><path class="hl" d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/><path d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/></svg><i class="led off"></i></span><span class="lbl">SESSIONS</span><span class="track"><span class="fill"></span><i class="dots"></i><i class="thumb"></i></span></div>
     <div class="row" id="row-subagents" style="top:215px"><span class="key-led"><svg class="pwr" viewBox="0 0 25 19"><path class="hl" d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/><path d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/></svg><i class="led off"></i></span><span class="lbl">SUBAGENTS</span><span class="track"><span class="fill"></span><i class="dots"></i><i class="thumb"></i></span></div>
-    <div class="row" id="row-tokens" style="top:243px"><span class="key-led"><svg class="pwr" viewBox="0 0 25 19"><path class="hl" d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/><path d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/></svg><i class="led off"></i></span><span class="lbl">TOKENS</span><span class="track"><span class="fill"></span><i class="dots"></i><i class="thumb"></i></span></div>
+    <div class="row" id="row-spend" style="top:243px"><span class="key-led"><svg class="pwr" viewBox="0 0 25 19"><path class="hl" d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/><path d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/></svg><i class="led off"></i></span><span class="lbl">SPEND</span><span class="track"><span class="fill"></span><i class="dots"></i><i class="thumb"></i></span></div>
     <div class="row" id="row-tools" style="top:271px"><span class="key-led"><svg class="pwr" viewBox="0 0 25 19"><path class="hl" d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/><path d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/></svg><i class="led off"></i></span><span class="lbl">TOOL CALLS</span><span class="track"><span class="fill"></span><i class="dots"></i><i class="thumb"></i></span></div>
     <div class="row" id="row-errors" style="top:299px"><span class="key-led"><svg class="pwr" viewBox="0 0 25 19"><path class="hl" d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/><path d="M9.62 6.4A4.3 4.3 0 1 0 15.38 6.4M12.5 3V10"/></svg><i class="led off"></i></span><span class="lbl">ERRORS</span><span class="track"><span class="fill"></span><i class="dots"></i><i class="thumb"></i></span></div>
   </div>
@@ -48,11 +48,11 @@
   <div class="keys g1">
     <button class="wkey" data-w="now" data-tip="Last 5 minutes, in 30 s bars"><span class="ic"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="3.2"/></svg></span><span class="tx">NOW</span></button>
     <button class="wkey" data-w="1h" data-tip="Last hour, in 6 min bars"><span class="ic"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.4" class="o"/><path d="M6 3.4V6l1.8 1.2" class="o"/></svg></span><span class="tx">1H</span></button>
-    <button class="wkey" data-w="today" data-tip="Today, from your first activity (at least the last hour)"><span class="ic"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="2.3"/><path d="M6 .8v1.6M6 9.6v1.6M.8 6h1.6M9.6 6h1.6M2.3 2.3l1.1 1.1M8.6 8.6l1.1 1.1M2.3 9.7l1.1-1.1M8.6 3.4l1.1-1.1" class="o"/></svg></span><span class="tx">TODAY</span></button>
+    <button class="wkey" data-w="today" data-tip="Today, from midnight to now (the bars widen through the day)"><span class="ic"><svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="2.3"/><path d="M6 .8v1.6M6 9.6v1.6M.8 6h1.6M9.6 6h1.6M2.3 2.3l1.1 1.1M8.6 8.6l1.1 1.1M2.3 9.7l1.1-1.1M8.6 3.4l1.1-1.1" class="o"/></svg></span><span class="tx">TODAY</span></button>
     <button class="wkey" data-w="week" data-tip="Last 7 days, in 16.8 h bars"><span class="ic"><svg viewBox="0 0 12 12"><rect x="1.6" y="2.4" width="8.8" height="8" rx=".8" class="o"/><path d="M1.6 4.8h8.8M4 1.2v2.2M8 1.2v2.2" class="o"/></svg></span><span class="tx">WEEK</span></button>
   </div>
   <div class="keys g2">
-    <button class="bkey" data-m="tokens" data-tip="Graph: output tokens per minute"><span class="ic"><svg viewBox="0 0 12 14"><path d="M.6 13.2h2.8V7.6H.6zM4.6 13.2h2.8V1.8H4.6zM8.6 13.2h2.8V5.2H8.6z"/></svg></span><span class="tx">TOKENS</span></button>
+    <button class="bkey" data-m="spend" data-tip="Graph: spend per hour (approximate API cost)"><span class="ic"><svg viewBox="0 0 12 14"><path d="M.6 13.2h2.8V7.6H.6zM4.6 13.2h2.8V1.8H4.6zM8.6 13.2h2.8V5.2H8.6z"/></svg></span><span class="tx">SPEND</span></button>
     <button class="bkey" data-m="sessions" data-tip="Graph: active sessions"><span class="ic"><svg viewBox="0 0 12 14"><circle cx="6" cy="3.9" r="2.9"/><path d="M.6 13.4c0-4 2.4-5.9 5.4-5.9s5.4 1.9 5.4 5.9z"/></svg></span><span class="tx">SESSIONS</span></button>
   </div>
 
@@ -70,12 +70,12 @@
 
 <!-- ======================= mini deck: 146 x 92, the panel minimized ======================= -->
 <div id="mini" class="view">
-  <img class="shell pywebview-drag-region" src="assets/mini-shell.svg" alt="" draggable="false">
+  <img class="shell drag" src="assets/mini-shell.svg" alt="" draggable="false">
   <button id="dome-hide" class="dome" style="left:7.2px;top:7.3px" title="Hide (the menu-bar item keeps running)"><b class="g-minus"></b></button>
   <button id="dome-expand" class="dome" style="left:7.2px;top:24.9px" title="Expand to the panel"><svg class="g-up" viewBox="0 0 8 5"><path d="M1 4.2 4 1.2 7 4.2"/></svg></button>
   <button id="dome-menu" class="dome" style="left:124.9px;top:7.3px" title="Menu"><b class="g-list"></b></button>
   <button class="dome" style="left:124.9px;top:24.9px" title="(decorative)"><b class="g-skin"></b></button>
-  <div id="mscreen" class="mscreen pywebview-drag-region" title="Expand to the panel">
+  <div id="mscreen" class="mscreen drag" title="Expand to the panel">
     <div id="mtracks" class="layer"></div>
     <div class="layer arc"></div>
     <div id="mfills" class="layer"></div>

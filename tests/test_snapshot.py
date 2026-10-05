@@ -59,6 +59,17 @@ def compact(o):
     return json.dumps(o, separators=(",", ":")) + "\n"
 
 
+def usd(out, inp=3, read=50000, rates=(5, 25, 0.5)):
+    """What asst() costs: input, cache read and output at (input, output, cache read) $/MTok;
+    the default rates are Claude Opus 5's."""
+    return (inp * rates[0] + read * rates[2] + out * rates[1]) / 1e6
+
+
+# the fixture transcript: three Claude Opus 5 messages with 5-minute cache writes (no TTL split)
+FIX_USD = ((5 * 5 + 2000 * 6.25 + 10000 * 0.5 + 120 * 25) + (7 * 5 + 500 * 6.25 + 12000 * 0.5 + 45 * 25)
+           + (9 * 5 + 300 * 6.25 + 12500 * 0.5 + 300 * 25)) / 1e6       # $0.04648
+
+
 def write(path, text, mtime=NOW, mode="a"):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, mode) as f:
@@ -68,10 +79,11 @@ def write(path, text, mtime=NOW, mode="a"):
 
 # ---------------------------------------------------------------- Claude Code
 
-def test_claude_tokens_tools_and_errors(roots):
+def test_claude_spend_tools_and_errors(roots):
     snap = snapshot.build(scan(("/nonexistent", roots[1])), "now", now=NOW)
     r = rows(snap)
-    assert r["tokens"]["value"] == 120 + 45 + 300       # output tokens only, never cache reads
+    assert r["spend"]["value"] == pytest.approx(FIX_USD)  # input, cache writes and reads, output
+    assert "465 output tokens" in r["spend"]["tip"] and "API list prices" in r["spend"]["tip"]
     assert r["tools"]["value"] == 1
     assert r["errors"]["value"] == 0                    # a failed tool result is routine, not an error
     assert r["errors"]["led"] == "green"
@@ -79,12 +91,12 @@ def test_claude_tokens_tools_and_errors(roots):
     assert snap["now"]["active"] == 1
     assert snap["menuTitle"] == "1 active"
     assert snap["readout"]["text"] == "1 active · 1 open" and snap["readout"]["led"] == "green"
-    # tokens are a rate: 30 s buckets, so the bucket totals are doubled
-    assert sum(snap["spectrum"]["tokens"]["values"]) == 2 * 465
-    assert "Models: Opus 5 100%." in r["tokens"]["tip"]
+    # spend is a rate, $/h: 30 s buckets, so the bucket totals times 120
+    assert sum(snap["spectrum"]["spend"]["values"]) == pytest.approx(120 * FIX_USD, abs=0.02)
+    assert "Models: Opus 5 100%." in r["spend"]["tip"]
 
 
-def test_subagent_and_workflow_tokens_are_included(roots):
+def test_subagent_and_workflow_spend_is_included(roots):
     base = os.path.join(roots[1], PROJ, SID, "subagents")
     write(os.path.join(base, "agent-a1.jsonl"), user(NOW - 100) + asst(NOW - 90, "msg_sub_1", 700, tool="toolu_s1"))
     write(os.path.join(base, "workflows", "wf_1", "agent-a2.jsonl"),
@@ -94,32 +106,89 @@ def test_subagent_and_workflow_tokens_are_included(roots):
     write(os.path.join(base, "agent-a1.meta.json"), "{}")
     snap = snapshot.build(scan(roots), "now", now=NOW)
     r = rows(snap)
-    assert r["tokens"]["value"] == 465 + 700 + 1000
+    opus, sonnet = FIX_USD + usd(700), usd(1000, rates=(2, 10, 0.2))
+    assert r["spend"]["value"] == pytest.approx(opus + sonnet)
+    assert "2,165 output tokens" in r["spend"]["tip"]
     assert r["subagents"]["value"] == 2
     assert r["tools"]["value"] == 2
-    # model shares sit in the TOKENS row tooltip, for the shown window: 1165 Opus vs 1000 Sonnet
-    assert "Models: Opus 5 54%, Sonnet 5 46%." in r["tokens"]["tip"]
-    assert "79% from subagents" in r["tokens"]["tip"]      # 1700 of 2165
+    # model shares of the spend sit in the SPEND row tooltip, for the shown window
+    assert "Models: Opus 5 82%, Sonnet 5 18%." in r["spend"]["tip"]
+    assert "57% from subagents" in r["spend"]["tip"]
     # subagents fold into their parent: still one Claude session (plus one Cursor session)
     assert rows(snapshot.build(scan(roots), "1h", now=NOW))["sessions"]["value"] == 2
 
 
 def test_streamed_duplicate_message_ids_count_once(roots):
-    """One API message is written as one record per content block with the same message.id and
-    a growing output_tokens; the max is the final count."""
+    """One API message is written as one record per content block with the same message.id: the
+    input and cache counts repeat and output_tokens grows. Per field the max counts, once."""
     p = os.path.join(roots[1], CLAUDE_FILE)
     write(p, asst(NOW - 40, "msg_stream", 1) + asst(NOW - 35, "msg_stream", 1, tool="toolu_x"))
     s = scan(("/nonexistent", roots[1]))
-    assert rows(snapshot.build(s, "now", now=NOW))["tokens"]["value"] == 465 + 1
+    assert rows(snapshot.build(s, "now", now=NOW))["spend"]["value"] == pytest.approx(FIX_USD + usd(1))
     write(p, asst(NOW - 20, "msg_stream", 250, tool="toolu_x"), mtime=NOW + 2)   # same tool block repeated
     s.refresh(NOW + 2)
     snap = snapshot.build(s, "now", now=NOW + 2)
-    assert rows(snap)["tokens"]["value"] == 465 + 250
+    assert rows(snap)["spend"]["value"] == pytest.approx(FIX_USD + usd(250))     # the cache read once
+    assert "715 output tokens" in rows(snap)["spend"]["tip"]
     assert rows(snap)["tools"]["value"] == 1 + 1
-    # each record adds what is new at its own time: 1 lands at -40 s, 249 at -20 s
-    vals = snap["spectrum"]["tokens"]["values"]
-    assert vals[-2:] == [2, 498]                        # per minute
-    assert snap["spectrum"]["tokens"]["tips"][-1].endswith("\n249 tokens · 498/min")
+    # each record adds what is new at its own time: input, cache and 1 output token land at -40 s,
+    # 249 output tokens at -20 s
+    vals = snap["spectrum"]["spend"]["values"]
+    assert vals[-2:] == pytest.approx([120 * usd(1), 120 * 249 * 25 / 1e6], abs=0.01)   # $/h
+    assert snap["spectrum"]["spend"]["tips"][-1].endswith("\n$0.01 · $0.7/h\n249 output tokens")
+
+
+def test_cost_of_a_message_from_its_usage():
+    """Input, 5-minute and 1-hour cache writes, cache reads and output at the model's list prices,
+    plus web searches; fast mode doubles the token part."""
+    u = {"input_tokens": 10, "cache_creation_input_tokens": 3000, "cache_read_input_tokens": 100000,
+         "cache_creation": {"ephemeral_5m_input_tokens": 1000, "ephemeral_1h_input_tokens": 2000},
+         "output_tokens": 500, "server_tool_use": {"web_search_requests": 2}}
+    v = sources.usage(u)
+    assert v == (10, 1000, 2000, 100000, 500, 2)
+    rates, exact = sources.price("claude-opus-5-5")
+    assert exact and rates == (4, 20, 0.20)
+    tokens = (10 * 4 + 1000 * 5 + 2000 * 8 + 100000 * 0.20 + 500 * 20) / 1e6
+    assert sources.usd(rates, v) == pytest.approx(tokens + 0.02)
+    assert sources.usd(rates, v, 2.0) == pytest.approx(2 * tokens + 0.02)
+    # no TTL split: the write is priced as the default 5-minute one
+    del u["cache_creation"]
+    assert sources.usage(u)[1:3] == (3000, 0)
+    assert sources.usd(sources.price("claude-fable-5-1")[0], (0, 0, 0, 1_000_000, 0, 0)) == pytest.approx(0.25)
+    assert sources.usage(None) == (0,) * 6
+
+
+def test_cache_fields_and_ttl_split_count_once_per_streamed_message(roots):
+    p = os.path.join(roots[1], CLAUDE_FILE)
+    rec = json.loads(asst(NOW - 30, "msg_1h", 100, model="claude-opus-5-5"))
+    rec["message"]["usage"].update({"cache_creation_input_tokens": 4000,
+                                    "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 4000}})
+    write(p, compact(rec))
+    rec["message"]["usage"]["output_tokens"] = 300           # the next block of the same message
+    write(p, compact(rec))
+    snap = snapshot.build(scan(("/nonexistent", roots[1])), "now", now=NOW)
+    want = (3 * 4 + 4000 * 8 + 50000 * 0.20 + 300 * 20) / 1e6
+    assert rows(snap)["spend"]["value"] == pytest.approx(FIX_USD + want)
+    assert "Opus 5.5" in rows(snap)["spend"]["tip"]
+
+
+def test_model_prices_by_id_and_family_fallback(roots):
+    price = sources.price
+    assert price("claude-haiku-4-5-20251001") == ((1, 5, 0.10), True)
+    assert price("claude-opus-4-6[1m]") == ((5, 25, 0.50), True)
+    assert price("claude-opus-4-5@20251101") == ((5, 25, 0.50), True)
+    assert price("us.anthropic.claude-sonnet-4-5-v1:0") == ((3, 15, 0.30), True)
+    assert price("claude-opus-4-20250514") == ((15, 75, 1.50), True)
+    assert price("claude-sonnet-5") == ((2, 10, 0.20), True) and price("claude-fable-5") == ((10, 50, 1), True)
+    # a version not in the table: the newest price of its family, marked as an estimate
+    assert price("claude-opus-6") == (sources.PRICES["opus-5-5"], False)
+    assert price("claude-sonnet-9-1") == (sources.PRICES["sonnet-5-5"], False)
+    assert price("gpt-5") is None and price("<synthetic>") is None
+    p = os.path.join(roots[1], CLAUDE_FILE)
+    write(p, asst(NOW - 30, "u1", 1000, model="claude-sonnet-9") + asst(NOW - 20, "u2", 1000, model="glm-4.6"))
+    r = rows(snapshot.build(scan(("/nonexistent", roots[1])), "now", now=NOW))["spend"]
+    assert r["value"] == pytest.approx(FIX_USD + usd(1000, rates=(2, 10, 0.2)))   # glm: no price, $0
+    assert "Sonnet 9 " in r["tip"] and "(estimate)" in r["tip"] and "glm-4.6 (no price)" in r["tip"]
 
 
 def test_synthetic_replays_do_not_count_tool_calls(roots):
@@ -143,8 +212,8 @@ def test_synthetic_api_errors(roots):
     snap = snapshot.build(scan(("/nonexistent", roots[1])), "now", now=NOW)
     r = rows(snap)
     assert r["errors"]["value"] == 1 and r["errors"]["led"] == "red"
-    assert r["tokens"]["value"] == 465
-    assert "Models: Opus 5 100%." in r["tokens"]["tip"]  # <synthetic> adds nothing
+    assert r["spend"]["value"] == pytest.approx(FIX_USD)
+    assert "Models: Opus 5 100%." in r["spend"]["tip"]  # <synthetic> adds nothing, costs $0
     # 20 min later the error is out of NOW (green) and older than 15 min in 1H (amber)
     later = NOW + 1200
     s = scan(("/nonexistent", roots[1]), later)
@@ -176,11 +245,11 @@ def test_live_from_session_files_not_mtime(roots):
     assert r["value"] == 1 and r["led"] == "green" and r["tip"] == "1 session working now, 2 open"
     assert snap["readout"]["text"] == "1 active · 2 open"
     idle = [a for a in agents if not a.busy]
-    snap = snapshot.build(s, "now", "tokens", procs=procs, agents=idle, now=later)
+    snap = snapshot.build(s, "now", "spend", procs=procs, agents=idle, now=later)
     r = rows(snap)["sessions"]
     assert r["value"] == 0 and r["led"] == "amber"
     assert snap["readout"] == {"text": "Idle · 1 open", "led": "amber",
-                               "tip": "No session working now, 1 open. 0 output tokens in the last minute."}
+                               "tip": "No session working now, 1 open. Spend in the last minute: $0.00 ($0/h, approximate)."}
     assert snap["deckText"] == {"big": "IDLE", "small": ""} and snap["menuTitle"] == ""
 
 
@@ -211,15 +280,15 @@ def test_malformed_last_line_does_not_raise(roots):
     p = os.path.join(roots[1], CLAUDE_FILE)
     write(p, '{"type":"assistant","timestamp":"2026-10-04T12:04:00.000Z","message":{"id":"msg_fx_04","usage":{"outp')
     snap = snapshot.build(scan(roots), "now", now=NOW)
-    assert rows(snap)["tokens"]["value"] == 465
+    assert rows(snap)["spend"]["value"] == pytest.approx(FIX_USD)
 
 
 def test_now_excludes_yesterday(roots):
     p = os.path.join(roots[1], CLAUDE_FILE)
     write(p, asst(NOW - 86400, "msg_old", 9999, sid="old"))
     s = scan(("/nonexistent", roots[1]))
-    assert rows(snapshot.build(s, "now", now=NOW))["tokens"]["value"] == 465
-    assert rows(snapshot.build(s, "week", now=NOW))["tokens"]["value"] == 465 + 9999
+    assert rows(snapshot.build(s, "now", now=NOW))["spend"]["value"] == pytest.approx(FIX_USD)
+    assert rows(snapshot.build(s, "week", now=NOW))["spend"]["value"] == pytest.approx(FIX_USD + usd(9999))
 
 
 # ---------------------------------------------------------------- Cursor and merging
@@ -234,18 +303,19 @@ def test_merged_sessions_from_both_sources(roots):
     assert '"cursor"' not in text and '"claude"' not in text   # nothing keyed by source
 
 
-def test_cursor_only_has_no_tokens_and_defaults_to_sessions(roots):
+def test_cursor_only_has_no_spend_and_defaults_to_sessions(roots):
     p = os.path.join(roots[0], CURSOR_FILE)
     os.utime(p, (NOW - 600, NOW - 600))
     s = scan((roots[0], "/nonexistent"))
     hour = snapshot.build(s, "1h", now=NOW)
-    t = rows(hour)["tokens"]
+    t = rows(hour)["spend"]
     assert t["value"] is None and t["fill"] == 0 and t["led"] == "off"
+    assert "Cursor does not report usage" in t["tip"]
     assert hour["metric"] == "sessions"                 # the only spectrum Cursor can fill
-    assert hour["spectrum"]["tokens"]["known"] is False
+    assert hour["spectrum"]["spend"]["known"] is False
     assert hour["now"]["rate"] is None                  # no source reports usage
-    assert "Cursor activity, no usage data" in "".join(hour["spectrum"]["tokens"]["tips"])
-    assert snapshot.build(s, "1h", "tokens", now=NOW)["deckText"] == {"big": "NO DATA", "small": ""}
+    assert "Cursor activity, no usage data" in "".join(hour["spectrum"]["spend"]["tips"])
+    assert snapshot.build(s, "1h", "spend", now=NOW)["deckText"] == {"big": "NO DATA", "small": ""}
     assert rows(hour)["sessions"]["value"] == 1
     assert rows(hour)["tools"]["value"] == 2
     # no timestamps in Cursor records: bytes on disk at launch are dated by mtime, never in NOW
@@ -314,7 +384,7 @@ def test_nothing_installed():
     s.refresh(NOW)
     snap = snapshot.build(s, "now", now=NOW)
     r = rows(snap)
-    assert r["tokens"]["value"] == 0 and r["tokens"]["led"] == "off"
+    assert r["spend"]["value"] == 0 and r["spend"]["led"] == "off"
     assert r["sessions"]["value"] == 0 and r["sessions"]["led"] == "off"
     assert snap["loading"] is False
     assert snap["readout"] == {"text": "No sessions", "led": "off", "tip": "No sessions open."}
@@ -337,30 +407,44 @@ def test_spectrum_metric_per_window(roots, window, bucket, start):
             assert len(sp["values"]) == len(sp["heights"]) == len(sp["tips"]) == 10
             assert len(sp["labels"]) == 4 and all(len(x) <= 2 for x in sp["labels"])
             assert all(0 <= h <= 1 for h in sp["heights"])
-        assert snap["spectrum"]["tokens"]["tab"] == "Tokens/min ×1k"
-        assert snap["spectrum"]["tokens"]["labels"] == ["4", "3", "2", "1"]     # the 4k/min floor
+        assert snap["spectrum"]["spend"]["tab"] == "Spend $/h"
+        assert snap["spectrum"]["spend"]["labels"] == ["20", "15", "10", "5"]     # the $20/h floor
         assert snap["spectrum"]["sessions"]["tab"] == "Active sessions"
         assert len(snap["rows"]) == 5
         assert snap["deckTip"].endswith(", %s. Click to expand." % snapshot.SHOWN[window])
-    tok = snapshot.build(s, window, "tokens", now=NOW)["spectrum"]["tokens"]
-    assert sum(tok["values"]) == round(465 * 60 / bucket) or window == "week"
-    assert tok["fullScale"] >= max(tok["values"])
+    sp = snapshot.build(s, window, "spend", now=NOW)["spectrum"]["spend"]
+    assert sum(sp["values"]) == pytest.approx(FIX_USD * 3600 / bucket, abs=0.02)
+    assert sp["fullScale"] >= max(sp["values"])
 
 
-def test_today_starts_at_first_event(roots):
+def test_today_runs_from_midnight_to_now(roots):
+    """TODAY always starts at local midnight, also long before the first event of the day."""
     s = scan(roots)
     snap = snapshot.build(s, "today", now=NOW)
-    # first event 12:01 UTC, floored to 12:00; the span is at least an hour, so it starts at end - 1 h
-    start = datetime.fromtimestamp(NOW + 10 - 3600)
-    assert snap["axis"][0]["text"] == "%d:%02d" % (start.hour, start.minute)
-    assert snap["bucketSecs"] == 360
-    assert sum(snap["spectrum"]["tokens"]["values"]) == pytest.approx(465 / 6, abs=1)   # per minute: 6 min buckets
-    later = NOW + 3 * 3600      # three hours later the window starts at the first event
-    s = scan(roots, later)
-    snap = snapshot.build(s, "today", now=later)
-    start = datetime.fromtimestamp(datetime.fromisoformat("2026-10-04T12:00:00+00:00").timestamp())
-    assert snap["axis"][0]["text"] == "%d:%02d" % (start.hour, start.minute)
-    assert snap["bucketSecs"] == 1120        # 3 h 5 min 10 s / 10, rounded up to the 10 s grid
+    mid = snapshot.midnight(NOW)
+    end = NOW + 10                                   # the end of the current 10 s bin
+    assert snap["axis"][0] == {"x": 0, "text": "0:00"} and snap["axis"][-1]["text"] == "now"
+    assert snap["bucketSecs"] == pytest.approx((end - mid) / 10)
+    sp = snap["spectrum"]["spend"]
+    assert sum(sp["values"]) == pytest.approx(FIX_USD * 3600 / snap["bucketSecs"], abs=0.02)
+    assert rows(snap)["spend"]["value"] == pytest.approx(FIX_USD)
+
+
+def test_today_right_after_midnight(roots):
+    """Seconds and minutes after midnight TODAY covers only today: bars and totals the same span."""
+    p = os.path.join(roots[1], PROJ, "s2.jsonl")
+    mid = local(2026, 10, 5)
+    for t, buckets, first in ((mid + 30, 10, "0:00:00–0:00:10"), (mid + 20 * 60 + 5, 121, "0:00–0:02")):
+        write(p, asst(mid - 1800, "y1", 1000, sid="s2") + asst(mid - 5, "y2", 1000, sid="s2")
+              + asst(t - 25, "t1", 10, sid="s2"), mtime=t, mode="w")
+        s = scan(("/nonexistent", roots[1]), t)
+        snap = snapshot.build(s, "today", "spend", now=t)
+        assert snap["axis"][0]["text"] == "0:00" and snap["bucketSecs"] == buckets   # 10 bins at least
+        sp = snap["spectrum"]["spend"]
+        assert rows(snap)["spend"]["value"] == pytest.approx(usd(10))             # nothing from yesterday
+        assert sum(v * buckets / 3600 for v in sp["values"]) == pytest.approx(usd(10), abs=1e-4)
+        assert sp["tips"][0].startswith(first)          # seconds while the bars are under a minute
+    assert texts(snap["axis"]) == ["0:00", "0:05", "0:10", "0:15", "0:20", "now"]
 
 
 def test_active_sessions_use_a_90s_lookback(roots):
@@ -423,15 +507,15 @@ def test_full_scale_steps():
                 assert all(len(x) <= 2 and x.isdigit() for x in snapshot.scale_labels(fs, unit)[1])
 
 
-def test_tokens_tab_names_the_multiplier(roots):
+def test_spend_tab_names_the_multiplier(roots):
     s = scan(("/nonexistent", roots[1]))
     p = os.path.join(roots[1], CLAUDE_FILE)
-    write(p, asst(NOW - 12, "big", 50000))          # 50k in one 30 s bucket: 100k/min
+    write(p, asst(NOW - 12, "big", 40000))          # $1.03 in one 30 s bucket: $123/h
     s.refresh(NOW)
-    sp = snapshot.build(s, "now", "tokens", now=NOW)["spectrum"]["tokens"]
-    assert sp["fullScale"] == 120000 and sp["tab"] == "Tokens/min ×10k" and sp["labels"] == ["12", "9", "6", "3"]
-    assert sp["tip"].endswith("Top of scale: 120k/min.")
-    assert sp["values"][-1] == 100000 and sp["heights"][-1] == 0.833
+    sp = snapshot.build(s, "now", "spend", now=NOW)["spectrum"]["spend"]
+    assert sp["fullScale"] == 200 and sp["tab"] == "Spend $/h ×10" and sp["labels"] == ["20", "15", "10", "5"]
+    assert sp["tip"].endswith("Top of scale: $200/h.") and "Approximate API cost" in sp["tip"]
+    assert sp["values"][-1] == pytest.approx(120 * usd(40000), abs=0.01) and sp["heights"][-1] == 0.615
 
 
 def test_loading_is_per_window(roots):
@@ -443,18 +527,6 @@ def test_loading_is_per_window(roots):
     s.backlog = [(NOW - 2 * 86400, 100, "/x/old.jsonl", "claude")]
     assert snapshot.build(s, "now", now=NOW + 2)["loading"] is False
     assert snapshot.build(s, "week", now=NOW + 2)["loading"] is True
-
-
-def test_today_totals_start_at_midnight(roots, tmp_path):
-    """Before 01:00 TODAY's spectrum spans the last hour, but its totals are today's only."""
-    t = datetime(2026, 10, 5, 0, 20, 5).timestamp()     # local time
-    p = os.path.join(roots[1], PROJ, "s2.jsonl")
-    write(p, asst(t - 1800, "y1", 1000, sid="s2") + asst(t - 900, "t1", 10, sid="s2"), mtime=t)
-    s = scan(("/nonexistent", roots[1]), t)
-    snap = snapshot.build(s, "today", "tokens", now=t)
-    assert rows(snap)["tokens"]["value"] == 10
-    assert sum(snap["spectrum"]["tokens"]["values"]) == pytest.approx(1010 / 6, abs=1)   # the bars still cover the axis span
-    assert snap["axis"][0]["text"] == "23:20"
 
 
 def test_sessions_scale_labels(roots):
@@ -483,27 +555,27 @@ def texts(ticks):
 
 def test_axis_now_and_hour():
     end = local(2026, 10, 5, 20, 40, 10)
-    now = snapshot.axis("now", end - 300, end, end - 300)
+    now = snapshot.axis("now", end - 300, end)
     assert texts(now) == ["-5m", "-4m", "-3m", "-2m", "-1m", "now"]
     assert [t["x"] for t in now] == [0, 0.2, 0.4, 0.6, 0.8, 1]
-    hour = snapshot.axis("1h", end - 3600, end, end - 3600)
+    hour = snapshot.axis("1h", end - 3600, end)
     assert texts(hour) == ["-1h", "-45m", "-30m", "-15m", "now"] and hour[2]["x"] == 0.5
 
 
 def test_axis_today_picks_whole_clock_times():
-    start, end = local(2026, 10, 5, 8, 30), local(2026, 10, 5, 14, 5, 10)
-    ticks = snapshot.axis("today", start, end, start)
-    # 1 h steps would give 6 labels; 2 h gives at most 4
-    assert texts(ticks) == ["8:30", "10:00", "12:00", "14:00", "now"]
-    assert ticks[1]["x"] == pytest.approx((local(2026, 10, 5, 10) - start) / (end - start), abs=1e-4)
-    # right after midnight the 1 h minimum span reaches into yesterday
-    end = local(2026, 10, 5, 0, 20, 10)
-    assert texts(snapshot.axis("today", end - 3600, end, end - 3600)) == ["23:20", "23:30", "23:45", "0:00", "0:15", "now"]
+    mid, end = local(2026, 10, 5), local(2026, 10, 5, 14, 5, 10)
+    ticks = snapshot.axis("today", mid, end)
+    # 2 h steps would give 7 labels; 3 h gives at most 4
+    assert texts(ticks) == ["0:00", "3:00", "6:00", "9:00", "12:00", "now"]
+    assert ticks[1]["x"] == pytest.approx(3 * 3600 / (end - mid), abs=1e-4)
+    # right after midnight: 5 min steps, or no interior label at all
+    assert texts(snapshot.axis("today", mid, mid + 20 * 60 + 10)) == ["0:00", "0:05", "0:10", "0:15", "0:20", "now"]
+    assert texts(snapshot.axis("today", mid, mid + 100)) == ["0:00", "now"]
 
 
 def test_axis_week_names_each_day_at_noon():
     end = local(2026, 10, 5, 14, 5, 10)              # a Monday afternoon
-    ticks = snapshot.axis("week", end - 7 * 86400, end, end - 7 * 86400)
+    ticks = snapshot.axis("week", end - 7 * 86400, end)
     assert texts(ticks) == ["-7d", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Mon", "now"]
     noon = local(2026, 10, 5, 12)
     assert ticks[-2]["x"] == pytest.approx((noon - (end - 7 * 86400)) / (7 * 86400), abs=1e-4)
@@ -523,11 +595,11 @@ def test_bar_tooltips_say_what_each_bucket_holds(roots):
     write(p, user(NOW - 650))                       # Claude activity without tokens, 1H bucket 8
     os.utime(os.path.join(roots[0], CURSOR_FILE), (NOW - 900, NOW - 900))     # Cursor only, bucket 7
     s = scan(roots)
-    sp = snapshot.build(s, "1h", "tokens", now=NOW)["spectrum"]
-    tips = sp["tokens"]["tips"]
-    assert tips[-1].split("\n")[1] == "465 tokens · 78/min"           # 6 min buckets
+    sp = snapshot.build(s, "1h", "spend", now=NOW)["spectrum"]
+    tips = sp["spend"]["tips"]
+    assert tips[-1].split("\n")[1:] == ["$0.05 · $0.5/h", "465 output tokens"]   # 6 min buckets
     assert tips[-1].split("\n")[0].endswith("–now")
-    assert tips[8].split("\n")[1] == "no tokens"
+    assert tips[8].split("\n")[1] == "no spend"
     assert tips[7].split("\n")[1] == "Cursor activity, no usage data"  # the Cursor file, dated by its mtime
     assert tips[0].split("\n")[1] == "no activity"
     assert sp["sessions"]["tips"][-1].split("\n")[1] == "1 session active"
@@ -538,16 +610,17 @@ def test_deck_and_readout_follow_the_graph(roots):
     p = os.path.join(roots[1], CLAUDE_FILE)
     write(p, asst(NOW - 30, "fresh", 12000))
     s = scan(("/nonexistent", roots[1]))
-    tok = snapshot.build(s, "week", "tokens", now=NOW)
-    assert tok["now"] == {"active": 1, "open": 1, "rate": 12000}
-    assert tok["deckText"] == {"big": "12k", "small": "/min"}
-    assert tok["readout"]["tip"].endswith("12,000 output tokens in the last minute.")
-    assert tok["deckTip"] == "Tokens/min, last 7 days. Click to expand."
+    sp = snapshot.build(s, "week", "spend", now=NOW)
+    assert sp["now"]["rate"] == pytest.approx(60 * usd(12000))           # $/h over the last minute: $19.50
+    assert sp["now"]["active"] == 1 and sp["now"]["open"] == 1
+    assert sp["deckText"] == {"big": "$20", "small": "/h"}
+    assert sp["readout"]["tip"].endswith("Spend in the last minute: $0.33 ($20/h, approximate).")
+    assert sp["deckTip"] == "Spend $/h (approximate API cost; Cursor reports no usage), last 7 days. Click to expand."
     ses = snapshot.build(s, "week", "sessions", now=NOW)
     assert ses["deckText"] == {"big": "1", "small": "ACTIVE"}
-    # an active session whose last minute had no tokens (a long tool call) reads 0/min, not IDLE
+    # an active session whose last minute had no spend (a long tool call) reads $0/h, not IDLE
     later = NOW + 50                                # the record is 80 s old: still active
-    assert snapshot.build(s, "now", "tokens", now=later)["deckText"] == {"big": "0", "small": "/min"}
+    assert snapshot.build(s, "now", "spend", now=later)["deckText"] == {"big": "$0", "small": "/h"}
     # a session Claude Code reports busy that wrote nothing in the lookback (a long tool call):
     # the last SESSIONS bar counts it too, so the bar, the deck and the tab agree
     agents = [A(9, "busy-sid", True, NOW - 300, "busy")]
@@ -558,7 +631,7 @@ def test_deck_and_readout_follow_the_graph(roots):
     assert ses["spectrum"]["sessions"]["tips"][-1].endswith("2 sessions active")
     # loading: nothing parsed yet
     cold = snapshot.Scanner("/nonexistent", roots[1])
-    snap = snapshot.build(cold, "now", "tokens", now=NOW)
+    snap = snapshot.build(cold, "now", "spend", now=NOW)
     assert snap["deckText"]["big"] == "…" and snap["readout"]["text"] == "Loading…" and snap["menuTitle"] == ""
 
 
@@ -608,30 +681,37 @@ def test_menu_lines(roots):
     agents = [A(1, SID, True, NOW - 30, "busy", "brave-otter-12", "/x")]
     working, opened = snapshot.live_state(s, sources.Procs(), agents, NOW)
     lines = snapshot.menu_lines(s, agents, working, opened, NOW)
-    assert lines[0] == ("1 active · 1 open · 0 tokens/min", 0)
-    assert lines[1][0].startswith("Today: ") and lines[1][0].endswith("465 tokens · 1 tool call · 0 errors")
+    assert lines[0] == ("1 active · 1 open · $0/h", 0)
+    assert lines[1][0].startswith("Today: ") and lines[1][0].endswith("$0.05 at API prices · 1 tool call · 0 errors")
     assert lines[2] == ("brave-otter-12", 1)
     write(os.path.join(roots[1], CLAUDE_FILE), asst(NOW - 20, "r1", 41000))
     s = scan(("/nonexistent", roots[1]))
     working, opened = snapshot.live_state(s, sources.Procs(), agents, NOW)
-    assert snapshot.menu_lines(s, agents, working, opened, NOW)[0][0].endswith(" · 41k tokens/min")   # as the deck
+    assert snapshot.menu_lines(s, agents, working, opened, NOW)[0][0].endswith(" · $63/h")   # as the deck
 
 
-def test_token_rate_covers_exactly_the_last_minute(roots):
+def test_spend_rate_covers_exactly_the_last_minute(roots):
     """10 s bins: the bin that is partly older than a minute counts for its part inside it, so a
     steady stream reads its true rate at any point in a bin and the value slides, not jumps."""
     p = os.path.join(roots[1], CLAUDE_FILE)
-    for dt in (0, 3, 7, 9):            # 100 tokens every 2 s up to now: 3,000/min
+    for dt in (0, 3, 7, 9):            # a message every 2 s up to now: 30 a minute
         t = NOW + dt
         write(p, "".join(asst(t - 1 - 2 * k, "m%d" % k, 100) for k in range(60)), mtime=t, mode="w")
-        rate = snapshot.token_rate(scan(("/nonexistent", roots[1]), t), t)
-        assert 2900 <= rate <= 3100, (dt, rate)
-    # a burst at 12:04:05 (bin 12:04:00-:10) and 1,000 tokens at 12:04:59
+        rate = snapshot.spend_rate(scan(("/nonexistent", roots[1]), t), t)
+        assert rate == pytest.approx(60 * 30 * usd(100), rel=0.02), dt          # $/h
+    # a burst at 12:04:05 (bin 12:04:00-:10) and one message at 12:04:59
     write(p, asst(NOW - 55, "b", 7000) + asst(NOW - 1, "c", 1000), mode="w")
     s = scan(("/nonexistent", roots[1]))
-    assert snapshot.token_rate(s, NOW) == 8000              # 12:05:00: its bin is all inside the minute
-    assert snapshot.token_rate(s, NOW + 3) == 1000 + 4900   # 12:05:03: 7/10 of its bin is
-    assert snapshot.token_rate(s, NOW + 10) == 1000         # 12:05:10: out
+    assert snapshot.spend_rate(s, NOW) == pytest.approx(60 * (usd(7000) + usd(1000)))         # 12:05:00: all inside
+    assert snapshot.spend_rate(s, NOW + 3) == pytest.approx(60 * (0.7 * usd(7000) + usd(1000)))   # 7/10 of its bin
+    assert snapshot.spend_rate(s, NOW + 10) == pytest.approx(60 * usd(1000))                  # 12:05:10: out
+
+
+def test_today_is_the_default_window(roots):
+    s = scan(roots)
+    assert snapshot.build(s, now=NOW)["window"] == "today"
+    assert snapshot.build(s, "bogus", now=NOW)["window"] == "today"
+    assert snapshot.build(s, now=NOW)["metric"] == "spend"
 
 
 # ---------------------------------------------------------------- ps, names

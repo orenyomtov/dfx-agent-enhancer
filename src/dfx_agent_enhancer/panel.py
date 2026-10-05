@@ -63,6 +63,9 @@ class Api:
     def dock(self):
         self._ctrl.ui.dock()
 
+    def drag_start(self):
+        self._ctrl.ui.drag_start()
+
     def hide(self):
         self._ctrl.ui.hide()
 
@@ -84,6 +87,8 @@ class Panel:
         self.switch_lock = threading.Lock()
         self.anchor = None          # oval centre in Cocoa screen coordinates (y up)
         self.hidden = False         # hidden to the menu bar; not persisted
+        self._grab = None           # at the last mouse-down on the window: mouse minus window origin
+        self._dragging = False
         w, h = SIZE[self.mode]
         self.window = webview.create_window(
             APP_NAME, html=page(self.mode), js_api=Api(ctrl), width=w, height=h,
@@ -140,6 +145,59 @@ class Panel:
         if win is not None:
             self.anchor = self._anchor_of(self.mode, win.frame())
 
+    # ------------------------------------------------------------ dragging
+    # pywebview's drag region moves the window from the page's MouseEvent.screenX/Y. WebKit measures
+    # screenY from the top of the screen the window is on, and pywebview turns it back into Cocoa
+    # coordinates with the height of the screen the window was created on. On a second display of
+    # another height the window jumped by the difference (to the top of a laptop screen next to a
+    # taller external one). So the page only says "a drag starts here" and the window follows the
+    # mouse in Cocoa screen coordinates, keeping the offset it had at mouse-down.
+    def _watch_drag(self) -> None:
+        """Main thread. A local event monitor sees every mouse event of the app before the web view."""
+        from AppKit import (NSEvent, NSEventMaskLeftMouseDown, NSEventMaskLeftMouseDragged, NSEventMaskLeftMouseUp,
+                            NSEventTypeLeftMouseDown, NSEventTypeLeftMouseUp)
+
+        def handler(event):
+            try:
+                win = self._nswindow()
+                kind = event.type()
+                if kind == NSEventTypeLeftMouseDown:
+                    self._dragging = False
+                    self._grab = None
+                    if win is not None and event.window() == win:
+                        m, o = NSEvent.mouseLocation(), win.frame().origin
+                        self._grab = (m.x - o.x, m.y - o.y)
+                elif self._dragging:
+                    self._follow()
+                    if kind == NSEventTypeLeftMouseUp:
+                        self._dragging = False
+            except Exception as e:              # never swallow the user's clicks
+                print("drag:", repr(e))
+            return event
+        mask = NSEventMaskLeftMouseDown | NSEventMaskLeftMouseDragged | NSEventMaskLeftMouseUp
+        self._drag_monitor = NSEvent.addLocalMonitorForEventsMatchingMask_handler_(mask, handler)
+
+    def _follow(self) -> None:
+        """Main thread: put the window where the grab point is under the mouse."""
+        from AppKit import NSEvent
+        win = self._nswindow()
+        if win is None or self._grab is None:
+            return
+        m = NSEvent.mouseLocation()
+        win.setFrameOrigin_((round(m.x - self._grab[0]), round(m.y - self._grab[1])))
+        self.anchor = self._anchor_of(self.mode, win.frame())
+
+    def drag_start(self) -> None:
+        """The page saw a mouse-down on the chassis. The message arrives a few ms after the
+        mouse-down, so the window catches up with the mouse at once. If the button is already up
+        it was a click, and nothing moves."""
+        def go():
+            from AppKit import NSEvent
+            if self._grab is not None and NSEvent.pressedMouseButtons() & 1:
+                self._dragging = True
+                self._follow()
+        AppHelper.callAfter(go)
+
     def _on_main(self, fn):
         done = threading.Event()
 
@@ -154,7 +212,7 @@ class Panel:
     # ------------------------------------------------------------ public, called from worker threads
     def start(self) -> None:
         """Position the window from the saved anchor, then show it."""
-        self._on_main(lambda: (self._place(self.mode), self._hover_always()))
+        self._on_main(lambda: (self._place(self.mode), self._hover_always(), self._watch_drag()))
         self.set_on_top(self.ctrl.toggles()["onTop"])
         self.show()
 

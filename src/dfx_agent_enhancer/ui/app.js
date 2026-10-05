@@ -45,7 +45,7 @@
   };
   var DIG = {
     "0": "abcdef", "1": "bc", "2": "abdeg", "3": "abcdg", "4": "bcfg", "5": "acdfg", "6": "acdefg",
-    "7": "abc", "8": "abcdefg", "9": "abcdfg", "-": "g", " ": "", G: "acdef"
+    "7": "abc", "8": "abcdefg", "9": "abcdfg", "-": "g", " ": "", G: "acdef", $: "acdfg"
   };
   // letters the 7 segments cannot show, drawn as strokes in the same weight (designed on a 7 x 13 cell)
   var EXTRA = {
@@ -59,6 +59,8 @@
     var body = GHOST;
     if (EXTRA[ch]) body += '<g transform="scale(' + (W / 7).toFixed(4) + ' 1)">' + EXTRA[ch] + "</g>";
     else (DIG[ch] || "").split("").forEach(function (s) { body += '<polygon class="on" points="' + pts(SEG[s]) + '"/>'; });
+    // $: the S of the 7 segments with a stroke through it, reaching past the cell like a printed $
+    if (ch === "$") body += '<rect class="on" x="' + (W / 2 - 0.45).toFixed(2) + '" y="-1.1" width=".9" height="' + (H + 2.2) + '"/>';
     body += '<circle class="' + (dp ? "dp" : "ghost") + '" cx="' + (W + 0.6) + '" cy="' + (H - 0.7) + '" r=".6"/>';
     return '<svg viewBox="0 0 ' + W + " " + H + '">' + body + "</svg>";
   }
@@ -82,6 +84,17 @@
     if (n < 1e7) return (Math.floor(n / 1e5) / 10).toFixed(1) + "M";
     if (n < 1e8) return Math.floor(n / 1e6) + "M";
     return Math.min(9.9, Math.floor(n / 1e8) / 10).toFixed(1) + "G";     // a heavy week: 0.2G
+  }
+  // dollars, also in three cells: $0, $0.4, $4.2, $42, then without the sign 420, 4.2k, 42k, 0.4M
+  function fmtUsd(n) {
+    if (n === null || n === undefined) return "--";
+    if (n === 0) return "$0";
+    if (n < 9.95) return "$" + n.toFixed(1);
+    if (n < 99.5) return "$" + Math.round(n);
+    if (n < 999.5) return String(Math.round(n));
+    if (n < 9950) return (n / 1000).toFixed(1) + "k";
+    if (n < 99500) return Math.round(n / 1000) + "k";
+    return Math.min(9.9, n / 1e6).toFixed(1) + "M";
   }
 
   // ------------------------------------------------------------ static parts
@@ -223,7 +236,7 @@
 
   // ------------------------------------------------------------ render
   // All logic is in Python (snapshot.py); the page only applies heights, fills, LEDs and text.
-  var ROWS = ["sessions", "subagents", "tokens", "tools", "errors"];
+  var ROWS = ["sessions", "subagents", "spend", "tools", "errors"];
 
   function setHeights(host, hs) {
     var f = host.querySelectorAll(".fill");
@@ -236,7 +249,7 @@
     row.querySelector(".thumb").style.left = (2 + +w) + "px";
     row.querySelector(".led").className = "led " + (loading ? "off" : (r.led || "off"));
     row.dataset.tip = r.tip || "";
-    var d = $("digits").children[n], text = loading ? "--" : fmtCount(r.value);   // not ready, not zero
+    var d = $("digits").children[n], text = loading ? "--" : (r.id === "spend" ? fmtUsd : fmtCount)(r.value);   // not ready, not zero
     d.dataset.tip = r.tip || "";
     if (d.dataset.v !== text) { d.dataset.v = text; d.innerHTML = digitRow(text); }
   }
@@ -261,7 +274,7 @@
     renderAxis(s.axis);
     barTips = sp.tips || [];
     barHeights = sp.heights || [];
-    $("note").textContent = s.loading ? "Loading…" : (s.metric === "tokens" && sp.known === false ? "No usage data" : "");
+    $("note").textContent = s.loading ? "Loading…" : (s.metric === "spend" && sp.known === false ? "No usage data" : "");
     var ro = s.readout || { text: "Loading…", led: "off" };
     $("tab-text").textContent = ro.text;
     $("rled").className = "rled " + (ro.led || "off");
@@ -334,6 +347,13 @@
     var els = document.querySelectorAll(sel);
     for (var i = 0; i < els.length; i++) on(els[i], null);
   });
+
+  // Dragging: a mouse-down on the chassis (.drag, never a control) tells Python, which moves the
+  // window with the mouse in screen coordinates (pywebview's own drag region misplaced it on a
+  // second display of another height).
+  document.addEventListener("mousedown", function (e) {
+    if (e.button === 0 && e.target.closest && e.target.closest(".drag")) call("drag_start");
+  }, true);
 
   // The deck can be dragged by its chassis or display; a click there that did not move expands it.
   var down = null;

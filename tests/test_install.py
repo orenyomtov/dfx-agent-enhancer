@@ -26,6 +26,20 @@ def test_old_config_is_moved(monkeypatch, tmp_path):
     assert os.path.exists(app.config_path()) and not old.parent.exists()
 
 
+def test_today_is_the_default_and_a_saved_now_moves_once(monkeypatch, tmp_path):
+    cfg = tmp_path / "config.json"
+    monkeypatch.setenv("DFX_CONFIG", str(cfg))
+    assert app.Controller().cfg["window"] == "today"            # a new install
+    cfg.write_text(json.dumps({"window": "now", "metric": "tokens", "anchor": [1, 2]}))
+    c = app.Controller()
+    assert (c.cfg["window"], c.cfg["metric"]) == ("today", "spend")
+    assert json.loads(cfg.read_text()) == {"window": "today", "metric": "spend", "anchor": [1, 2], "version": 2}
+    c.set_window("now")                                         # picked again after the move: kept
+    assert app.Controller().cfg["window"] == "now"
+    cfg.write_text(json.dumps({"window": "week"}))              # any other saved window stays
+    assert app.Controller().cfg["window"] == "week"
+
+
 def test_launch_agent_plist(monkeypatch, tmp_path):
     monkeypatch.setenv("DFX_LAUNCH_AGENTS", str(tmp_path))
     assert not login.enabled() and login.target() is None

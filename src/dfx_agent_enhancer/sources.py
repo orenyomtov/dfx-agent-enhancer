@@ -21,7 +21,58 @@ RECENT_IDS = 16          # streamed message ids / tool ids remembered per file (
 
 HEAD = 1024              # bytes of a Claude line searched for its record type
 
-OUT, TOOLS, ERRORS, EVENTS = range(4)
+OUT, TOOLS, ERRORS, EVENTS, COST = range(5)
+
+# Anthropic API list prices, $ per million tokens: (input, output, cache read). Cache writes are
+# 1.25x input (5-minute TTL) and 2x input (1-hour TTL) for every model. Fast mode is 2x and US-only
+# inference (inference_geo "us") 1.1x on every token type; web search is $10 per 1,000 searches.
+# Source: platform.claude.com/docs/en/about-claude/pricing, read 2026-10-06. This is what the usage
+# would cost on the API, not what a Claude subscription charges.
+PRICES = {
+    "fable-5-1": (10, 50, 0.25), "mythos-5-1": (10, 50, 0.25), "fable-5": (10, 50, 1), "mythos-5": (10, 50, 1),
+    "opus-5-5": (4, 20, 0.20), "opus-5": (5, 25, 0.50), "opus-4-8": (5, 25, 0.50), "opus-4-7": (5, 25, 0.50),
+    "opus-4-6": (5, 25, 0.50), "opus-4-5": (5, 25, 0.50), "opus-4-1": (15, 75, 1.50), "opus-4": (15, 75, 1.50),
+    "sonnet-5-5": (2, 10, 0.20), "sonnet-5": (2, 10, 0.20), "sonnet-4-6": (3, 15, 0.30), "sonnet-4-5": (3, 15, 0.30),
+    "sonnet-4": (3, 15, 0.30), "haiku-4-5": (1, 5, 0.10), "haiku-3-5": (0.80, 4, 0.08),
+}
+# an id not in the table is priced as the newest model of its family, and shown as an estimate
+FAMILY = {"fable": "fable-5-1", "mythos": "mythos-5-1", "opus": "opus-5-5", "sonnet": "sonnet-5-5", "haiku": "haiku-4-5"}
+SEARCH_USD = 0.01
+_priced: dict = {}
+
+
+def price(model: str):
+    """(rates, exact) for a model id, or None when it names no Claude family. Handles dated, [1m],
+    Bedrock and Vertex forms: claude-haiku-4-5-20251001, claude-opus-4-6[1m], claude-opus-4-5@20251101."""
+    if model not in _priced:
+        m = re.search(r"(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d)(?!\d))?", model or "")
+        key = m and "-".join(g for g in m.groups() if g)
+        if key in PRICES:
+            _priced[model] = (PRICES[key], True)
+        else:
+            f = re.search("|".join(FAMILY), (model or "").lower())
+            _priced[model] = (PRICES[FAMILY[f.group(0)]], False) if f else None
+    return _priced[model]
+
+
+def usage(u) -> tuple:
+    """(input, 5m cache write, 1h cache write, cache read, output, web searches) from message.usage.
+    Without the cache_creation split, a cache write is priced as the default 5-minute one."""
+    def g(d, k):
+        v = d.get(k) if isinstance(d, dict) else None
+        return v if isinstance(v, int) and v > 0 else 0
+    if not isinstance(u, dict):
+        return (0,) * 6
+    write = g(u, "cache_creation_input_tokens")
+    w1h = min(write, g(u.get("cache_creation"), "ephemeral_1h_input_tokens"))
+    return (g(u, "input_tokens"), write - w1h, w1h, g(u, "cache_read_input_tokens"), g(u, "output_tokens"),
+            g(u.get("server_tool_use"), "web_search_requests"))
+
+
+def usd(rates, v, mult: float = 1.0) -> float:
+    """Dollars for a usage tuple at the given (input, output, cache read) rates."""
+    i, o, r = rates
+    return mult * (v[0] * i + v[1] * i * 1.25 + v[2] * i * 2 + v[3] * r + v[4] * o) / 1e6 + v[5] * SEARCH_USD
 
 
 # ---------------------------------------------------------------- roots
@@ -164,10 +215,10 @@ def _value(raw: bytes, key: bytes, last: bool = False) -> bytes | None:
 class FileState:
     """One transcript, read incrementally (JSONL is append-only) into 10 s bins.
 
-    bins:   {bin: [reported output tokens, tool calls, errors, user/assistant events]}
+    bins:   {bin: [reported output tokens, tool calls, errors, user/assistant events, $ at list prices]}
     est:    the same for Cursor lines that were already on disk when first read; they are
             dated by the file mtime of that moment and never count in NOW or as live
-    models: {model: {bin: reported output tokens}}
+    models: {model: {bin: [reported output tokens, $]}}
     """
 
     __slots__ = ("path", "kind", "session", "sub", "mtime", "size", "offset", "old",
@@ -193,8 +244,8 @@ class FileState:
         self.offset = 0
         self.bins: dict[int, list[int]] = {}
         self.est: dict[int, list[int]] = {}
-        self.models: dict[str, dict[int, int]] = {}
-        self.msgs: dict[str, int] = {}      # message.id -> max output_tokens, recent ids only
+        self.models: dict[str, dict[int, list]] = {}
+        self.msgs: dict[str, tuple] = {}    # message.id -> max usage seen (see usage()), recent ids only
         self.tools: dict[str, None] = {}    # recent tool_use ids
         self.last = 0.0                     # newest user/assistant record time (not estimated)
 
@@ -208,7 +259,7 @@ class FileState:
         d = self.est if est else self.bins
         r = d.get(b)
         if r is None:
-            r = d[b] = [0, 0, 0, 0]
+            r = d[b] = [0, 0, 0, 0, 0.0]
         return r
 
     def _event(self, ts: float, est: bool = False) -> list[int]:
@@ -272,23 +323,31 @@ class FileState:
             return
         model = m.get("model") if isinstance(m.get("model"), str) else ""
         u = m.get("usage")
-        out = u.get("output_tokens") if isinstance(u, dict) else None
-        if isinstance(out, int) and out > 0 and model != "<synthetic>":
-            # Streaming writes one record per content block, all with the same message.id and
-            # a growing output_tokens. Each record adds what is new since the max seen so far,
-            # so a message counts once and lands when it was produced.
+        v = usage(u)
+        if any(v) and model != "<synthetic>":
+            # Streaming writes one record per content block, all with the same message.id: the
+            # input and cache counts repeat and output_tokens grows. Each record adds what is new
+            # over the max seen for that id (per field), so a message counts once and its output
+            # lands when it was produced.
             mid = m.get("id")
+            prev = self.msgs.get(mid) if isinstance(mid, str) else None
+            if prev is not None:
+                v = tuple(map(max, v, prev))
             if isinstance(mid, str):
-                prev = self.msgs.get(mid, 0)
-                delta = max(0, out - prev)
-                self._remember(self.msgs, mid, max(out, prev))
-            else:
-                delta = out
-            if delta:
+                self._remember(self.msgs, mid, v)
+            pr = price(model)
+            mult = (2.0 if u.get("speed") == "fast" else 1.0) * (1.1 if u.get("inference_geo") == "us" else 1.0)
+            cost = 0.0 if pr is None else usd(pr[0], v, mult) - (usd(pr[0], prev, mult) if prev else 0.0)
+            delta = v[4] - (prev[4] if prev else 0)
+            if delta or cost:
                 r[OUT] += delta
+                r[COST] += cost
                 mb = self.models.setdefault(model, {})
-                b = int(ts // BIN)
-                mb[b] = mb.get(b, 0) + delta
+                c = mb.get(int(ts // BIN))
+                if c is None:
+                    c = mb[int(ts // BIN)] = [0, 0.0]
+                c[0] += delta
+                c[1] += cost
         content = m.get("content")
         # <synthetic> records (API errors, and replays written when a session resumes) repeat
         # earlier tool_use blocks with their old ids; measured over a week, none was new
