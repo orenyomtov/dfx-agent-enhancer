@@ -92,6 +92,7 @@ button { font: inherit; border: 0; background: none; color: inherit; cursor: def
 .cols { position: absolute; inset: 0; }
 .col { position: absolute; top: 11px; width: 23px; height: 76.5px; }
 .grid i { position: absolute; left: 0; width: 246px; height: 1px; background: rgba(149, 179, 22, .3); }
+.db small { font-size: 7.5px; letter-spacing: -.3px; margin-right: .2px; vertical-align: .5px; }
 .db span {
   position: absolute; right: 231px; transform: translateY(-50%);
   font: italic 700 9.5px/9px Arial, Helvetica, sans-serif; color: #6f8808; letter-spacing: -.2px;

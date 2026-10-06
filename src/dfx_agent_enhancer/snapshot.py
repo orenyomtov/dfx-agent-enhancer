@@ -461,6 +461,7 @@ def spectrum(a: Agg, metric: str, window: str, scales: dict | None, now: float) 
         rates = [v * 3600 / length for v in a.usd]
         fs = stable(scales, (window, metric), fs_up(max(rates), SPEND_FLOOR), fs_down, now)
         mult, labels = scale_labels(fs, 1)
+        labels = ["$" + x for x in labels]      # the page draws the $ smaller, to fit the 15 px column
         tips = []
         for i in range(NB):
             if a.usd[i] or a.out[i]:

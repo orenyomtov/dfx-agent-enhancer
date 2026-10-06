@@ -408,10 +408,11 @@ def test_spectrum_metric_per_window(roots, window, bucket, start):
         assert snap["axis"][0] == {"x": 0, "text": start} and snap["axis"][-1] == {"x": 1, "text": "now"}
         for m, sp in snap["spectrum"].items():
             assert len(sp["values"]) == len(sp["heights"]) == len(sp["tips"]) == 10
-            assert len(sp["labels"]) == 4 and all(len(x) <= 2 for x in sp["labels"])
+            assert len(sp["labels"]) == 4 and all(len(x.lstrip("$")) <= 2 for x in sp["labels"])
             assert all(0 <= h <= 1 for h in sp["heights"])
         assert snap["spectrum"]["spend"]["tab"] == "Spend $/h"
-        assert snap["spectrum"]["spend"]["labels"] == ["20", "15", "10", "5"]     # the $20/h floor
+        assert snap["spectrum"]["spend"]["labels"] == ["$20", "$15", "$10", "$5"]     # the $20/h floor
+        assert snap["spectrum"]["sessions"]["labels"][0].isdigit()
         assert snap["spectrum"]["sessions"]["tab"] == "Active sessions"
         assert len(snap["rows"]) == 5
         assert snap["deckTip"].endswith(", %s. Click to expand." % snapshot.SHOWN[window])
@@ -516,7 +517,7 @@ def test_spend_tab_names_the_multiplier(roots):
     write(p, asst(NOW - 12, "big", 40000))          # $1.03 in one 30 s bucket: $123/h
     s.refresh(NOW)
     sp = snapshot.build(s, "now", "spend", now=NOW)["spectrum"]["spend"]
-    assert sp["fullScale"] == 200 and sp["tab"] == "Spend $/h ×10" and sp["labels"] == ["20", "15", "10", "5"]
+    assert sp["fullScale"] == 200 and sp["tab"] == "Spend $/h ×10" and sp["labels"] == ["$20", "$15", "$10", "$5"]
     assert sp["tip"].endswith("Top of scale: $200/h.") and "Approximate API cost" in sp["tip"]
     assert sp["values"][-1] == pytest.approx(120 * usd(40000), abs=0.01) and sp["heights"][-1] == 0.615
 

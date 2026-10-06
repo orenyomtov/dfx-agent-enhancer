@@ -5,6 +5,8 @@
     python3 tools/demo_data.py /tmp/dfx-demo --live      # keep appending every second or so
     python3 tools/demo_data.py /tmp/dfx-demo --at 17:20  # history up to 17:20 today (for screenshots
                                                          # of TODAY; build the snapshot with that now)
+    python3 tools/demo_data.py /tmp/dfx-demo --day [--at 22:40]  # a full workday on the clock for
+                     # TODAY shots: a session left running past midnight, then work from 6:20 to now
 
 Claude Code: three sessions, one with Task subagents and a workflow, streamed assistant
 messages (several records per message.id) with usage as Claude Code writes it (1-hour cache
@@ -70,16 +72,19 @@ def cursor_line(kind: str) -> str:
     return line({"role": "assistant", "message": {"content": [{"type": "tool_use", "name": "ReadFile", "input": {"path": "x"}}]}})
 
 
-def history(path: str, sid: str, model: str, sidechain: bool, now: float, start: float, busy) -> None:
+def history(path: str, sid: str, model: str, sidechain: bool, now: float, start: float, busy,
+            trickle: bool = True, pace: tuple = (8, 40)) -> None:
     """Turns from start to now: one every 8-40 s inside the busy blocks ((from, to) hours before
-    now), a trickle outside them."""
+    now), a trickle outside them (or nothing, without trickle)."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         t = start
         while t < now - 5:
             f.write(claude_turn(t, sid, model, sidechain, path))
             hot = any(now - a * 3600 <= t < now - b * 3600 for a, b in busy)
-            t += random.uniform(8, 40) if hot else random.uniform(300, 1200)
+            t += random.uniform(*pace) if hot else random.uniform(300, 1200)
+            if not trickle and not any(now - a * 3600 <= t < now - b * 3600 for a, b in busy):
+                t = min([now - a * 3600 for a, b in busy if now - a * 3600 > t] or [now])   # next block
     os.utime(path, (now, now))
 
 
@@ -90,23 +95,40 @@ def main() -> None:
     if "--at" in sys.argv:
         h, m = map(int, sys.argv[sys.argv.index("--at") + 1].split(":"))
         now = datetime.now().replace(hour=h, minute=m, second=0, microsecond=0).timestamp()
+    day = "--day" in sys.argv
     projects = os.path.join(root, "claude", "projects")
     names = ("api", "web", "docs")       # one project folder per session: the menu lists them by name
     sids = ["5e55e55e-0000-4000-8000-00000000000%d" % i for i in (1, 2, 3)]
     claude_files = []
     # work blocks in hours before now; sessions 1 and 2 are busy again in the last 10 minutes
     busy = [((7.5, 6.2), (3.2, 1.6), (0.17, 0)), ((5.2, 4.1), (2.2, 0.6), (0.17, 0)), ((4, 2.6),)]
+    starts = [now - (8 - 2 * i) * 3600 for i in range(3)]
+    sub_busy = lambda k: ((3.1 - 0.2 * k, 1.8), (0.25, 0))
+    sub_start = lambda k: now - 3.2 * 3600 + 600 * k
+    if day:
+        # clock hours today (negative: yesterday evening); "now" ends the open blocks
+        h0 = datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        nh = (now - h0) / 3600
+        ago = lambda blocks: tuple((nh - a, max(0.0, nh - b)) for a, b in blocks)
+        busy = [ago(((6.4, 9.6), (13.4, 15.6), (19.8, nh))),
+                ago(((-1.0, 0.9), (10.3, 12.6), (16.1, 18.4), (21.4, nh))),
+                ago(((11.0, 13.0), (17.2, 19.6)))]
+        starts = [h0 + 6.3 * 3600, h0 - 3600, h0 + 10.9 * 3600]
+        sub_busy = lambda k: ago(((13.6 + 0.15 * k, 14.9 - 0.1 * k),) + (((20.6, nh),) if k == 0 else ()))
+        sub_start = lambda k: h0 + (13.5 + 0.15 * k) * 3600
     # session 1: the main driver, with Task subagents and a workflow
     for i, sid in enumerate(sids):
         p = os.path.join(projects, "-Users-you-code-" + names[i], sid + ".jsonl")
-        history(p, sid, "claude-opus-5-5", False, now, now - (8 - 2 * i) * 3600, busy[i])
+        history(p, sid, "claude-opus-5-5", False, now, starts[i], busy[i], trickle=not (day and i == 1),
+                pace=(15, 48) if day else (8, 40))
         claude_files.append((p, sids[i], "claude-opus-5-5", False))
     sub = os.path.join(projects, "-Users-you-code-api", sids[0], "subagents")
     agents = [os.path.join(sub, "agent-a%02d.jsonl" % k) for k in range(3)]
     agents += [os.path.join(sub, "workflows", "wf_demo", "agent-w%02d.jsonl" % k) for k in range(2)]
     for k, p in enumerate(agents):
         model = ("claude-opus-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-4-5-20251001", "claude-sonnet-5-5")[k]
-        history(p, sids[0], model, True, now, now - 3.2 * 3600 + 600 * k, ((3.1 - 0.2 * k, 1.8), (0.25, 0)))
+        history(p, sids[0], model, True, now, sub_start(k), sub_busy(k), trickle=not day,
+                pace=(20, 60) if day else (8, 40))
         claude_files.append((p, sids[0], model, True))
     with open(os.path.join(sub, "workflows", "wf_demo", "journal.jsonl"), "w") as f:
         f.write(line({"kind": "started", "workflow": "wf_demo"}))

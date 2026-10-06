@@ -271,7 +271,10 @@
     var sp = s.spectrum[s.metric];
     setHeights($("fills"), sp.heights);
     var yl = $("ylab").children;
-    for (var i = 0; i < yl.length; i++) yl[i].textContent = sp.labels[i] || "";
+    for (var i = 0; i < yl.length; i++) {      // a "$" prefix is drawn smaller so "$40" fits the 15 px column
+      var lab = sp.labels[i] || "";
+      yl[i].innerHTML = lab.charAt(0) === "$" ? '<small>$</small>' + lab.slice(1) : lab;
+    }
     $("lime-text").textContent = sp.tab;
     $("tab-lime").dataset.tip = sp.tip || "";
     renderAxis(s.axis);
