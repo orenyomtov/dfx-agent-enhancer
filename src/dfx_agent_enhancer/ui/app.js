@@ -45,7 +45,7 @@
   };
   var DIG = {
     "0": "abcdef", "1": "bc", "2": "abdeg", "3": "abcdg", "4": "bcfg", "5": "acdfg", "6": "acdefg",
-    "7": "abc", "8": "abcdefg", "9": "abcdfg", "-": "g", " ": "", G: "acdef", $: "acdfg"
+    "7": "abc", "8": "abcdefg", "9": "abcdfg", "-": "g", " ": "", G: "acdef"
   };
   // letters the 7 segments cannot show, drawn as strokes in the same weight (designed on a 7 x 13 cell)
   var EXTRA = {
@@ -59,8 +59,6 @@
     var body = GHOST;
     if (EXTRA[ch]) body += '<g transform="scale(' + (W / 7).toFixed(4) + ' 1)">' + EXTRA[ch] + "</g>";
     else (DIG[ch] || "").split("").forEach(function (s) { body += '<polygon class="on" points="' + pts(SEG[s]) + '"/>'; });
-    // $: the S of the 7 segments with a stroke through it, reaching past the cell like a printed $
-    if (ch === "$") body += '<rect class="on" x="' + (W / 2 - 0.45).toFixed(2) + '" y="-1.1" width=".9" height="' + (H + 2.2) + '"/>';
     // a decimal point is a 1.9 px dot in a gap of its own (.drow svg.dp), so 6.6 never reads as 66
     if (dp) body += '<circle class="on" cx="' + (W + DPX) + '" cy="' + (H - 0.95) + '" r=".95"/>';
     return '<svg' + (dp ? ' class="dp"' : "") + ' viewBox="0 0 ' + W + " " + H + '">' + body + "</svg>";
@@ -86,14 +84,14 @@
     if (n < 1e8) return Math.floor(n / 1e6) + "M";
     return Math.min(9.9, Math.floor(n / 1e8) / 10).toFixed(1) + "G";     // a heavy week: 0.2G
   }
-  // dollars, also in three cells: $0, cents under a dollar ($.03, $.40: a little spend never shows
-  // as $0), $4.2, $42, then without the sign 420, 4.2k, 42k, 0.4M
+  // dollars in three cells, without a sign: the SPEND row draws a small raised $ above its digits
+  // (.drow small), like the $ on the Y labels, so 158 never reads as a count. 0, cents under a dollar
+  // (0.03, 0.40: a little spend never shows as 0), 4.2, 42, 420, 4.2k, 42k, 0.4M
   function fmtUsd(n) {
     if (n === null || n === undefined) return "--";
-    if (n === 0) return "$0";
-    if (n < 0.995) return "$." + ("0" + Math.max(1, Math.round(n * 100))).slice(-2);
-    if (n < 9.95) return "$" + n.toFixed(1);
-    if (n < 99.5) return "$" + Math.round(n);
+    if (n === 0) return "0";
+    if (n < 0.995) return Math.max(0.01, n).toFixed(2);
+    if (n < 9.95) return n.toFixed(1);
     if (n < 999.5) return String(Math.round(n));
     if (n < 9950) return (n / 1000).toFixed(1) + "k";
     if (n < 99500) return Math.round(n / 1000) + "k";
@@ -254,7 +252,7 @@
     row.dataset.tip = r.tip || "";
     var d = $("digits").children[n], text = loading ? "--" : (r.id === "spend" ? fmtUsd : fmtCount)(r.value);   // not ready, not zero
     d.dataset.tip = r.tip || "";
-    if (d.dataset.v !== text) { d.dataset.v = text; d.innerHTML = digitRow(text); }
+    if (d.dataset.v !== text) { d.dataset.v = text; d.innerHTML = digitRow(text) + (r.id === "spend" ? "<small>$</small>" : ""); }
   }
   function renderToggles(t) {
     t = t || {};

@@ -207,6 +207,8 @@ button { font: inherit; border: 0; background: none; color: inherit; cursor: def
 .drow svg.dp { margin-right: 1.9px; }   /* room for the decimal point: a 3.1 px gap instead of 1.2 */
 .drow .ghost { fill: #000; opacity: .085; }
 .drow .on { fill: #000; }
+/* the SPEND row's unit: a raised $ in the gap above its digits, the size of the Y labels' $ */
+.drow small { position: absolute; left: 1.2px; top: -8.6px; font: 700 7.5px/7px Arial, Helvetica, sans-serif; color: #000; letter-spacing: 0; }
 
 /* ---------------- right-hand keys ---------------- */
 .keys { position: absolute; left: 176px; width: 76px; border: 1px solid #131313; border-radius: 4px; overflow: hidden; background: #131313;
